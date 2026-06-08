@@ -225,7 +225,9 @@ namespace RubiksCube.UI
 
         private void OnStartClicked()
         {
-            SetState(AppState.PlaneDetection);
+            // Skip PlaneDetection for now - go straight to Scanning
+            // TODO: Re-enable AR plane detection once scanning is working
+            SetState(AppState.Scanning);
         }
 
         private void OnPlaneDetected(UnityEngine.XR.ARFoundation.ARPlane plane)
