@@ -56,3 +56,8 @@ Thumbs.db
 
 # StreamingAssets
 !/[Aa]ssets/StreamingAssets/**
+
+# Unity temp/recovery
+/.utmp/
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta
