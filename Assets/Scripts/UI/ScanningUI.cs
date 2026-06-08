@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.XR.ARFoundation;
 using RubiksCube.Data;
 using RubiksCube.ColorDetection;
 
@@ -28,6 +29,11 @@ namespace RubiksCube.UI
         private int currentFaceIndex = 0;
         private bool isScanning = false;
         private bool cameraReady = false;
+
+        // AR camera components that must be disabled while WebCamTexture uses the camera
+        private ARCameraManager arCameraManager;
+        private ARCameraBackground arCameraBackground;
+        private ARSession arSession;
         private float captureBlockTimer = 0f; // Prevent accidental rapid captures
 
         // Face scan order: U, R, F, D, L, B
@@ -96,6 +102,10 @@ namespace RubiksCube.UI
 
         private void InitCamera()
         {
+            // CRITICAL: Disable AR Foundation camera so WebCamTexture can access the physical camera.
+            // On Android only one component can use the camera at a time.
+            DisableARCamera();
+
             if (webCamTexture == null)
             {
                 WebCamDevice[] devices = WebCamTexture.devices;
@@ -163,6 +173,22 @@ namespace RubiksCube.UI
         {
             if (webCamTexture != null && webCamTexture.isPlaying)
                 webCamTexture.Stop();
+        }
+
+        private void DisableARCamera()
+        {
+            if (arCameraManager == null)
+                arCameraManager = FindFirstObjectByType<ARCameraManager>();
+            if (arCameraBackground == null)
+                arCameraBackground = FindFirstObjectByType<ARCameraBackground>();
+            if (arSession == null)
+                arSession = FindFirstObjectByType<ARSession>();
+
+            if (arSession != null) arSession.enabled = false;
+            if (arCameraManager != null) arCameraManager.enabled = false;
+            if (arCameraBackground != null) arCameraBackground.enabled = false;
+
+            Debug.Log("[Scan] AR camera disabled to free up physical camera for scanning");
         }
 
         private void OnCaptureClicked()
