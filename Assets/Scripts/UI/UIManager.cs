@@ -93,43 +93,34 @@ namespace RubiksCube.UI
 
         private void Update()
         {
-            // Handle plane detection touch
-            if (currentState == AppState.PlaneDetection)
+            bool touched = Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began;
+            bool clicked = Input.GetMouseButtonDown(0);
+
+            if (!touched && !clicked) return;
+
+            Vector2 inputPos = touched ? Input.GetTouch(0).position : (Vector2)Input.mousePosition;
+
+            switch (currentState)
             {
-                if (Input.touchCount > 0)
-                {
-                    Touch touch = Input.GetTouch(0);
-                    if (touch.phase == TouchPhase.Began)
-                    {
-                        if (arSessionManager != null && arSessionManager.TryPlaceAnchor(touch.position))
-                        {
-                            // Initialize AR guide at anchor
-                            if (arStepGuide != null && arSessionManager.CurrentAnchor != null)
-                                arStepGuide.Initialize(arSessionManager.CurrentAnchor.transform);
+                case AppState.Start:
+                    // Tap anywhere to start
+                    OnStartClicked();
+                    break;
 
-                            SetState(AppState.Scanning);
-                        }
-                    }
-                }
-
-                // Mouse click for editor testing
-                if (Input.GetMouseButtonDown(0))
-                {
-                    if (arSessionManager != null && arSessionManager.TryPlaceAnchor(Input.mousePosition))
+                case AppState.PlaneDetection:
+                    if (arSessionManager != null && arSessionManager.TryPlaceAnchor(inputPos))
                     {
                         if (arStepGuide != null && arSessionManager.CurrentAnchor != null)
                             arStepGuide.Initialize(arSessionManager.CurrentAnchor.transform);
-
                         SetState(AppState.Scanning);
                     }
                     #if UNITY_EDITOR
-                    // In editor without AR, just skip to scanning
                     else
                     {
                         SetState(AppState.Scanning);
                     }
                     #endif
-                }
+                    break;
             }
         }
 
