@@ -33,16 +33,16 @@ namespace RubiksCube.AR
         private void OnEnable()
         {
             if (planeManager != null)
-                planeManager.planesChanged += OnPlanesChanged;
+                planeManager.trackablesChanged.AddListener(OnPlanesTrackablesChanged);
         }
 
         private void OnDisable()
         {
             if (planeManager != null)
-                planeManager.planesChanged -= OnPlanesChanged;
+                planeManager.trackablesChanged.RemoveListener(OnPlanesTrackablesChanged);
         }
 
-        private void OnPlanesChanged(ARPlanesChangedEventArgs args)
+        private void OnPlanesTrackablesChanged(ARTrackablesChangedEventArgs<ARPlane> args)
         {
             if (!IsPlaneDetected && args.added.Count > 0)
             {

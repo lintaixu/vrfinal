@@ -103,7 +103,7 @@ namespace RubiksCube.Editor
             canvasGO.AddComponent<GraphicRaycaster>();
 
             // EventSystem
-            if (FindObjectOfType<UnityEngine.EventSystems.EventSystem>() == null)
+            if (FindFirstObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
             {
                 var eventSystem = new GameObject("EventSystem");
                 eventSystem.AddComponent<UnityEngine.EventSystems.EventSystem>();
