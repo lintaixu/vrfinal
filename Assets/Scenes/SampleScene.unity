@@ -332,10 +332,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 09cb67655814bb643962d66fa031488b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RubiksCube.AR.ARSessionManager
-  arSession: {fileID: 0}
-  planeManager: {fileID: 0}
-  raycastManager: {fileID: 0}
-  anchorManager: {fileID: 0}
+  arSession: {fileID: 613744689}
+  planeManager: {fileID: 6076344}
+  raycastManager: {fileID: 6076342}
+  anchorManager: {fileID: 6076343}
 --- !u!4 &39693647
 Transform:
   m_ObjectHideFlags: 0
@@ -407,12 +407,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 40758769bd79f8249bc636acbc414cbd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RubiksCube.UI.StepManager
-  stepCountText: {fileID: 0}
-  stepDescText: {fileID: 0}
-  moveNotationText: {fileID: 0}
-  nextButton: {fileID: 0}
-  prevButton: {fileID: 0}
-  arStepGuide: {fileID: 0}
+  stepCountText: {fileID: 1049824480}
+  stepDescText: {fileID: 825164361}
+  moveNotationText: {fileID: 500828148}
+  nextButton: {fileID: 1946884700}
+  prevButton: {fileID: 1801653520}
+  arStepGuide: {fileID: 1213505411}
 --- !u!114 &69170114
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1101,16 +1101,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ea2fd43c08d7cad4386928ad0e095a1b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RubiksCube.UI.ScanningUI
-  progressText: {fileID: 0}
-  hintText: {fileID: 0}
-  captureButton: {fileID: 0}
-  retakeButton: {fileID: 0}
-  gridOverlay: {fileID: 0}
+  progressText: {fileID: 1378134020}
+  hintText: {fileID: 1767720640}
+  captureButton: {fileID: 94927751}
+  retakeButton: {fileID: 1137639848}
+  gridOverlay: {fileID: 732420606}
   colorPreviewCells: []
   gridScreenRatio: 0.6
-  colorDetector: {fileID: 0}
+  colorDetector: {fileID: 39693644}
   webCamTexture: {fileID: 0}
-  cameraPreview: {fileID: 0}
+  cameraPreview: {fileID: 2014252792}
 --- !u!114 &298380881
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1149,143 +1149,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 298380878}
   m_CullTransparentMesh: 1
---- !u!1 &330585543
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 330585546}
-  - component: {fileID: 330585545}
-  - component: {fileID: 330585544}
-  - component: {fileID: 330585547}
-  m_Layer: 0
-  m_Name: Main Camera
-  m_TagString: MainCamera
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!81 &330585544
-AudioListener:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 330585543}
-  m_Enabled: 1
---- !u!20 &330585545
-Camera:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 330585543}
-  m_Enabled: 1
-  serializedVersion: 2
-  m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
-  m_projectionMatrixMode: 1
-  m_GateFitMode: 2
-  m_FOVAxisMode: 0
-  m_Iso: 200
-  m_ShutterSpeed: 0.005
-  m_Aperture: 16
-  m_FocusDistance: 10
-  m_FocalLength: 50
-  m_BladeCount: 5
-  m_Curvature: {x: 2, y: 11}
-  m_BarrelClipping: 0.25
-  m_Anamorphism: 0
-  m_SensorSize: {x: 36, y: 24}
-  m_LensShift: {x: 0, y: 0}
-  m_NormalizedViewPortRect:
-    serializedVersion: 2
-    x: 0
-    y: 0
-    width: 1
-    height: 1
-  near clip plane: 0.3
-  far clip plane: 1000
-  field of view: 60
-  orthographic: 0
-  orthographic size: 5
-  m_Depth: -1
-  m_CullingMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  m_RenderingPath: -1
-  m_TargetTexture: {fileID: 0}
-  m_TargetDisplay: 0
-  m_TargetEye: 3
-  m_HDR: 1
-  m_AllowMSAA: 1
-  m_AllowDynamicResolution: 0
-  m_ForceIntoRT: 0
-  m_OcclusionCulling: 1
-  m_StereoConvergence: 10
-  m_StereoSeparation: 0.022
---- !u!4 &330585546
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 330585543}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: -10}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &330585547
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 330585543}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_RenderShadows: 1
-  m_RequiresDepthTextureOption: 2
-  m_RequiresOpaqueTextureOption: 2
-  m_CameraType: 0
-  m_Cameras: []
-  m_RendererIndex: -1
-  m_VolumeLayerMask:
-    serializedVersion: 2
-    m_Bits: 1
-  m_VolumeTrigger: {fileID: 0}
-  m_VolumeFrameworkUpdateModeOption: 2
-  m_RenderPostProcessing: 1
-  m_Antialiasing: 0
-  m_AntialiasingQuality: 2
-  m_StopNaN: 0
-  m_Dithering: 0
-  m_ClearDepth: 1
-  m_AllowXRRendering: 1
-  m_AllowHDROutput: 1
-  m_UseScreenCoordOverride: 0
-  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
-  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
-  m_RequiresDepthTexture: 0
-  m_RequiresColorTexture: 0
-  m_TaaSettings:
-    m_Quality: 3
-    m_FrameInfluence: 0.1
-    m_JitterScale: 1
-    m_MipBias: 0
-    m_VarianceClampScale: 0.9
-    m_ContrastAdaptiveSharpening: 0
-  m_Version: 2
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -2006,8 +1869,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4966719baa26e4b0e8231a24d9bd491a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.XR.ARFoundation::UnityEngine.XR.ARFoundation.ARCameraManager
-  m_FocusMode: 1
-  m_LightEstimationMode: 0
+  m_FocusMode: -1
+  m_LightEstimationMode: -1
   m_AutoFocus: 1
   m_ImageStabilization: 0
   m_LightEstimation: 0
@@ -2938,13 +2801,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1f8dadfcba2d0294f9b5a6cb6b1ef6a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RubiksCube.UI.UIManager
-  startPanel: {fileID: 0}
-  planeDetectionPanel: {fileID: 0}
-  scanningPanel: {fileID: 0}
-  confirmPanel: {fileID: 0}
-  solvingPanel: {fileID: 0}
-  stepPanel: {fileID: 0}
-  completionPanel: {fileID: 0}
+  startPanel: {fileID: 931568883}
+  planeDetectionPanel: {fileID: 80569205}
+  scanningPanel: {fileID: 298380878}
+  confirmPanel: {fileID: 954393292}
+  solvingPanel: {fileID: 1877213517}
+  stepPanel: {fileID: 69170111}
+  completionPanel: {fileID: 1894700618}
   startButton: {fileID: 0}
   planeHintText: {fileID: 0}
   confirmPreviewCells: []
@@ -2952,12 +2815,12 @@ MonoBehaviour:
   confirmRetakeButton: {fileID: 0}
   completionText: {fileID: 0}
   restartButton: {fileID: 0}
-  scanningUI: {fileID: 0}
-  stepManager: {fileID: 0}
-  solver: {fileID: 0}
-  arSessionManager: {fileID: 0}
-  arStepGuide: {fileID: 0}
-  colorDetector: {fileID: 0}
+  scanningUI: {fileID: 298380880}
+  stepManager: {fileID: 69170113}
+  solver: {fileID: 39693645}
+  arSessionManager: {fileID: 39693646}
+  arStepGuide: {fileID: 1213505411}
+  colorDetector: {fileID: 39693644}
 --- !u!114 &918216369
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7003,7 +6866,6 @@ CanvasRenderer:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 330585546}
   - {fileID: 410087041}
   - {fileID: 832575519}
   - {fileID: 670527821}
