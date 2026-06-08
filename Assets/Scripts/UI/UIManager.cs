@@ -67,6 +67,9 @@ namespace RubiksCube.UI
 
         private void Start()
         {
+            // Set all UI text to English (default font doesn't support Chinese)
+            InitializeUIText();
+
             // Wire up buttons
             if (startButton != null)
                 startButton.onClick.AddListener(OnStartClicked);
@@ -152,7 +155,7 @@ namespace RubiksCube.UI
                 case AppState.PlaneDetection:
                     SetPanel(planeDetectionPanel, true);
                     if (planeHintText != null)
-                        planeHintText.text = "請將相機對準桌面\n偵測到平面後，點擊桌面放置方塊位置";
+                        planeHintText.text = "Point camera at a flat surface\nTap to place cube position";
                     break;
 
                 case AppState.Scanning:
@@ -180,7 +183,7 @@ namespace RubiksCube.UI
                 case AppState.Complete:
                     SetPanel(completionPanel, true);
                     if (completionText != null && currentSolution != null)
-                        completionText.text = $"恭喜完成！\n共 {currentSolution.Count} 步";
+                        completionText.text = $"Congratulations!\n{currentSolution.Count} moves total";
                     break;
             }
 
@@ -190,6 +193,41 @@ namespace RubiksCube.UI
         private void SetPanel(GameObject panel, bool active)
         {
             if (panel != null) panel.SetActive(active);
+        }
+
+        private void InitializeUIText()
+        {
+            // Override baked-in Chinese text with English
+            SetPanelTitle(startPanel, "AR Rubik's Cube Solver");
+            SetPanelButtonText(startPanel, "Start");
+            SetPanelTitle(planeDetectionPanel, "Point camera at a flat surface...");
+            SetPanelTitle(confirmPanel, "Confirm Scan Result");
+            SetPanelButtonText(confirmPanel, "Confirm");
+            SetPanelTitle(solvingPanel, "Solving...");
+            SetPanelTitle(completionPanel, "Congratulations!");
+            SetPanelButtonText(completionPanel, "Play Again");
+        }
+
+        private void SetPanelTitle(GameObject panel, string text)
+        {
+            if (panel == null) return;
+            var title = panel.transform.Find("Title");
+            if (title != null)
+            {
+                var tmp = title.GetComponent<TextMeshProUGUI>();
+                if (tmp != null) tmp.text = text;
+            }
+        }
+
+        private void SetPanelButtonText(GameObject panel, string text)
+        {
+            if (panel == null) return;
+            var btn = panel.transform.Find("Button");
+            if (btn != null)
+            {
+                var tmp = btn.GetComponentInChildren<TextMeshProUGUI>();
+                if (tmp != null) tmp.text = text;
+            }
         }
 
         #region Event Handlers
@@ -202,7 +240,7 @@ namespace RubiksCube.UI
         private void OnPlaneDetected(UnityEngine.XR.ARFoundation.ARPlane plane)
         {
             if (planeHintText != null)
-                planeHintText.text = "已偵測到平面！\n點擊桌面放置方塊位置";
+                planeHintText.text = "Plane detected!\nTap to place cube position";
         }
 
         private void OnScanComplete()
@@ -224,7 +262,7 @@ namespace RubiksCube.UI
                 Debug.LogWarning($"[UI] Validation failed: {error}");
                 // Show error and go back to scan
                 if (planeHintText != null)
-                    planeHintText.text = $"驗證失敗：{error}\n請重新掃描";
+                    planeHintText.text = $"Validation failed: {error}\nPlease rescan";
                 SetState(AppState.Scanning);
             }
         }

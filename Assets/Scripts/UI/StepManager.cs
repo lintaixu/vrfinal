@@ -27,9 +27,17 @@ namespace RubiksCube.UI
         private void Start()
         {
             if (nextButton != null)
+            {
                 nextButton.onClick.AddListener(NextStep);
+                var tmp = nextButton.GetComponentInChildren<TextMeshProUGUI>();
+                if (tmp != null) tmp.text = "Next";
+            }
             if (prevButton != null)
+            {
                 prevButton.onClick.AddListener(PrevStep);
+                var tmp = prevButton.GetComponentInChildren<TextMeshProUGUI>();
+                if (tmp != null) tmp.text = "Prev";
+            }
         }
 
         public void LoadSteps(List<MoveStep> moveSteps)
@@ -75,7 +83,7 @@ namespace RubiksCube.UI
             MoveStep step = steps[currentIndex];
 
             if (stepCountText != null)
-                stepCountText.text = $"步驟 {currentIndex + 1} / {steps.Count}";
+                stepCountText.text = $"Step {currentIndex + 1} / {steps.Count}";
 
             if (stepDescText != null)
                 stepDescText.text = step.GetDescription();
@@ -88,7 +96,7 @@ namespace RubiksCube.UI
 
             if (nextButton != null)
                 nextButton.GetComponentInChildren<TextMeshProUGUI>().text =
-                    currentIndex >= steps.Count - 1 ? "完成" : "下一步";
+                    currentIndex >= steps.Count - 1 ? "Done" : "Next";
 
             // Update AR display
             if (arStepGuide != null)

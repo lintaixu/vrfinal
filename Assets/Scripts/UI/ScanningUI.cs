@@ -30,9 +30,9 @@ namespace RubiksCube.UI
 
         // Face scan order: U, R, F, D, L, B
         private static readonly string[] FaceNames = {
-            "上面 (U) - 白色中心朝上", "右面 (R) - 紅色中心",
-            "前面 (F) - 綠色中心", "下面 (D) - 黃色中心朝上",
-            "左面 (L) - 橙色中心", "後面 (B) - 藍色中心"
+            "Top (U) - White center", "Right (R) - Red center",
+            "Front (F) - Green center", "Bottom (D) - Yellow center",
+            "Left (L) - Orange center", "Back (B) - Blue center"
         };
 
         public CubeState ScannedState => cubeState;
@@ -45,9 +45,17 @@ namespace RubiksCube.UI
             cubeState = new CubeState();
 
             if (captureButton != null)
+            {
                 captureButton.onClick.AddListener(OnCaptureClicked);
+                var tmp = captureButton.GetComponentInChildren<TextMeshProUGUI>();
+                if (tmp != null) tmp.text = "Capture";
+            }
             if (retakeButton != null)
+            {
                 retakeButton.onClick.AddListener(OnRetakeClicked);
+                var tmp = retakeButton.GetComponentInChildren<TextMeshProUGUI>();
+                if (tmp != null) tmp.text = "Retake";
+            }
         }
 
         public void StartScanning()
@@ -156,12 +164,12 @@ namespace RubiksCube.UI
         private void UpdateUI()
         {
             if (progressText != null)
-                progressText.text = $"已掃描 {currentFaceIndex} / 6 面";
+                progressText.text = $"Scanned {currentFaceIndex} / 6 faces";
 
             if (hintText != null && currentFaceIndex < 6)
-                hintText.text = $"請對準：{FaceNames[currentFaceIndex]}";
+                hintText.text = $"Aim at: {FaceNames[currentFaceIndex]}";
             else if (hintText != null)
-                hintText.text = "掃描完成！";
+                hintText.text = "Scan complete!";
 
             if (retakeButton != null)
                 retakeButton.interactable = currentFaceIndex > 0;
