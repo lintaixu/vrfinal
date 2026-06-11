@@ -78,6 +78,10 @@ namespace RubiksCube.UI
                 {
                     cameraReady = true;
                     ApplyCameraRotation();
+                    // BUGFIX: refresh UI so the Capture button becomes interactable.
+                    // Previously the button stayed disabled forever because UpdateUI
+                    // was only called before the camera was ready.
+                    UpdateUI();
                     Debug.Log($"[Scan] Camera ready: {webCamTexture.width}x{webCamTexture.height}, rotation={webCamTexture.videoRotationAngle}");
                 }
             }
@@ -90,14 +94,43 @@ namespace RubiksCube.UI
             isScanning = true;
             cameraReady = false;
             captureBlockTimer = 1.5f; // Block captures for 1.5s to prevent accidental taps
+            MakeGridSquare();
             InitCamera();
             UpdateUI();
+        }
+
+        /// <summary>
+        /// Force the on-screen grid overlay to be a centered square so it
+        /// matches the square region sampled from the camera texture.
+        /// </summary>
+        private void MakeGridSquare()
+        {
+            if (gridOverlay == null) return;
+            var parent = gridOverlay.parent as RectTransform;
+            if (parent == null) return;
+
+            float side = parent.rect.width * gridScreenRatio;
+            gridOverlay.anchorMin = new Vector2(0.5f, 0.5f);
+            gridOverlay.anchorMax = new Vector2(0.5f, 0.5f);
+            gridOverlay.pivot = new Vector2(0.5f, 0.5f);
+            gridOverlay.anchoredPosition = Vector2.zero;
+            gridOverlay.sizeDelta = new Vector2(side, side);
         }
 
         public void StopScanning()
         {
             isScanning = false;
             StopCamera();
+        }
+
+        /// <summary>
+        /// Show a message in the hint area (e.g. validation errors).
+        /// Overridden by the next UpdateUI call.
+        /// </summary>
+        public void ShowMessage(string message)
+        {
+            if (hintText != null)
+                hintText.text = message;
         }
 
         private void InitCamera()
@@ -143,31 +176,45 @@ namespace RubiksCube.UI
         {
             if (cameraPreview == null || webCamTexture == null) return;
 
-            // Fix rotation for Android cameras
+            var rt = cameraPreview.rectTransform;
+            var parent = rt.parent as RectTransform;
+            if (parent == null) return;
+
             int rot = webCamTexture.videoRotationAngle;
             bool mirror = webCamTexture.videoVerticallyMirrored;
 
-            cameraPreview.rectTransform.localEulerAngles = new Vector3(0, 0, -rot);
+            // Center the preview so rotation and sizing behave predictably.
+            // (Full-stretch anchors made sizeDelta additive, causing wrong zoom.)
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.localEulerAngles = new Vector3(0, 0, -rot);
+            rt.localScale = mirror ? new Vector3(1, -1, 1) : Vector3.one;
 
-            // Adjust scale for mirroring
-            if (mirror)
-                cameraPreview.rectTransform.localScale = new Vector3(1, -1, 1);
-            else
-                cameraPreview.rectTransform.localScale = new Vector3(1, 1, 1);
+            float texW = webCamTexture.width;
+            float texH = webCamTexture.height;
+            float screenW = parent.rect.width;
+            float screenH = parent.rect.height;
 
-            // Adjust aspect ratio to fill screen properly
-            float aspectRatio = (float)webCamTexture.width / webCamTexture.height;
-            if (rot == 90 || rot == 270)
-            {
-                // Camera is rotated, swap width/height for sizing
-                float parentHeight = cameraPreview.rectTransform.parent.GetComponent<RectTransform>().rect.height;
-                float parentWidth = cameraPreview.rectTransform.parent.GetComponent<RectTransform>().rect.width;
-                float scale = Mathf.Max(parentWidth / (float)webCamTexture.height, parentHeight / (float)webCamTexture.width);
-                cameraPreview.rectTransform.sizeDelta = new Vector2(webCamTexture.width * scale, webCamTexture.height * scale);
-            }
+            // Footprint on screen after rotation
+            bool rotated = (rot == 90 || rot == 270);
+            float dispW = rotated ? texH : texW;
+            float dispH = rotated ? texW : texH;
 
-            Debug.Log($"[Scan] Camera rotation applied: angle={rot}, mirror={mirror}");
+            // "Cover" scaling: fill the screen, keep aspect, crop overflow
+            float scale = Mathf.Max(screenW / dispW, screenH / dispH);
+            previewCoverScale = scale;
+
+            // sizeDelta is applied BEFORE rotation, so always use texture orientation
+            rt.sizeDelta = new Vector2(texW * scale, texH * scale);
+
+            Debug.Log($"[Scan] Camera preview: angle={rot}, mirror={mirror}, scale={scale:F3}, tex={texW}x{texH}, screen={screenW}x{screenH}");
         }
+
+        // Screen-pixels per texture-pixel of the preview; used to map the
+        // on-screen grid square back onto the captured texture.
+        private float previewCoverScale = 1f;
 
         private void StopCamera()
         {
@@ -222,8 +269,21 @@ namespace RubiksCube.UI
             Texture2D corrected = RotateTexture(snapshot, rotation, mirrored);
             Destroy(snapshot);
 
-            // Define grid region (center of corrected frame)
-            float gridSize = Mathf.Min(corrected.width, corrected.height) * gridScreenRatio;
+            // Map the on-screen grid square back onto the corrected texture.
+            // The preview "covers" the screen at previewCoverScale, both centered,
+            // so the texture region is the screen square divided by that scale.
+            float gridSize;
+            var panelRect = transform as RectTransform;
+            if (previewCoverScale > 0f && panelRect != null)
+            {
+                float screenSide = panelRect.rect.width * gridScreenRatio;
+                gridSize = screenSide / previewCoverScale;
+            }
+            else
+            {
+                gridSize = Mathf.Min(corrected.width, corrected.height) * gridScreenRatio;
+            }
+            gridSize = Mathf.Min(gridSize, Mathf.Min(corrected.width, corrected.height));
             int gx = (int)((corrected.width - gridSize) / 2);
             int gy = (int)((corrected.height - gridSize) / 2);
             var region = new RectInt(gx, gy, (int)gridSize, (int)gridSize);

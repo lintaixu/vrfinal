@@ -24,21 +24,21 @@ namespace RubiksCube.Data
         {
             string faceName = face switch
             {
-                CubeFace.U => "上面 (Up)",
-                CubeFace.D => "下面 (Down)",
-                CubeFace.F => "前面 (Front)",
-                CubeFace.B => "後面 (Back)",
-                CubeFace.L => "左面 (Left)",
-                CubeFace.R => "右面 (Right)",
+                CubeFace.U => "Top (U)",
+                CubeFace.D => "Bottom (D)",
+                CubeFace.F => "Front (F)",
+                CubeFace.B => "Back (B)",
+                CubeFace.L => "Left (L)",
+                CubeFace.R => "Right (R)",
                 _ => face.ToString()
             };
 
             string direction = turns switch
             {
-                1 => "順時針 90°",
-                -1 => "逆時針 90°",
-                2 => "旋轉 180°",
-                _ => $"旋轉 {turns}"
+                1 => "clockwise 90°",
+                -1 => "counter-clockwise 90°",
+                2 => "turn 180°",
+                _ => $"turn {turns}"
             };
 
             return $"{faceName} {direction}";
@@ -101,9 +101,17 @@ namespace RubiksCube.Data
                 }
             }
 
+            if (colorCount.ContainsKey('?'))
+            {
+                error = $"{colorCount['?']} stickers could not be recognized — rescan with better lighting";
+                isValid = false;
+                errorMessage = error;
+                return false;
+            }
+
             if (colorCount.Count != 6)
             {
-                error = $"應有 6 種顏色，但偵測到 {colorCount.Count} 種";
+                error = $"Expected 6 colors but detected {colorCount.Count}";
                 isValid = false;
                 errorMessage = error;
                 return false;
@@ -113,7 +121,7 @@ namespace RubiksCube.Data
             {
                 if (kv.Value != 9)
                 {
-                    error = $"顏色 '{kv.Key}' 出現 {kv.Value} 次（應為 9 次）";
+                    error = $"Color '{kv.Key}' appears {kv.Value} times (should be 9)";
                     isValid = false;
                     errorMessage = error;
                     return false;
@@ -126,7 +134,7 @@ namespace RubiksCube.Data
             {
                 if (!centers.Add(faces[i][4]))
                 {
-                    error = $"第 {i + 1} 面的中心色重複";
+                    error = $"Face {i + 1} has a duplicated center color";
                     isValid = false;
                     errorMessage = error;
                     return false;

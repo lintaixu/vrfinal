@@ -253,10 +253,10 @@ namespace RubiksCube.UI
             else
             {
                 Debug.LogWarning($"[UI] Validation failed: {error}");
-                // Show error and go back to scan
-                if (planeHintText != null)
-                    planeHintText.text = $"Validation failed: {error}\nPlease rescan";
+                // Go back to scanning and show the error where the user can see it
                 SetState(AppState.Scanning);
+                if (scanningUI != null)
+                    scanningUI.ShowMessage($"Scan invalid: {error}");
             }
         }
 
@@ -284,9 +284,25 @@ namespace RubiksCube.UI
 
         private void ShowConfirmPreview()
         {
-            if (confirmPreviewCells == null || colorDetector == null) return;
-
             CubeState state = scanningUI.ScannedState;
+
+            // No preview cell grid in the scene yet — show a text summary
+            // of all 6 scanned faces so the user can verify before solving.
+            if (confirmPreviewCells == null || confirmPreviewCells.Length == 0)
+            {
+                string[] faceLabels = { "U", "R", "F", "D", "L", "B" };
+                var sb = new System.Text.StringBuilder("Scan result:\n");
+                for (int face = 0; face < 6; face++)
+                {
+                    var f = state.faces[face];
+                    sb.Append($"{faceLabels[face]}: {f[0]}{f[1]}{f[2]} {f[3]}{f[4]}{f[5]} {f[6]}{f[7]}{f[8]}\n");
+                }
+                SetPanelTitle(confirmPanel, sb.ToString());
+                return;
+            }
+
+            if (colorDetector == null) return;
+
             int cellIdx = 0;
             for (int face = 0; face < 6 && face < state.faces.Length; face++)
             {
