@@ -503,7 +503,7 @@ namespace Kociemba
             for (int j = 2; j > 0; j--)
             {
                 int k = 0;
-                while ((int)edge3[j] != Edge.UB + j)
+                while ((int)edge3[j] != (int)Edge.UB + j)
                 {
                     RotateLeft(edge3, 0, j);
                     k++;
