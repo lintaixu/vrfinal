@@ -14,8 +14,9 @@ namespace RubiksCube.UI
     /// verify their relative orientation.
     ///
     /// Interactions (drag-based to avoid accidental taps):
-    ///  - Drag a sticker onto another sticker to swap the two colors
-    ///  - Drag a color from the palette row onto a sticker to repaint it
+    ///  - Drag a face (grab any of its stickers) onto another face to swap
+    ///    the entire 9-sticker faces — fixes scans done in the wrong order
+    ///  - Drag a color from the palette row onto a single sticker to repaint it
     ///  - Tap a face's center letter to rotate that face 90° clockwise
     /// </summary>
     public class CubeNetView : MonoBehaviour
@@ -104,7 +105,7 @@ namespace RubiksCube.UI
             hintTMP.fontSize = 21;
             hintTMP.alignment = TextAlignmentOptions.Center;
             hintTMP.color = new Color(0.8f, 0.8f, 0.8f);
-            hintTMP.text = "Drag a sticker onto another to swap. Drag a palette color onto a sticker to repaint.\nTap a center letter to rotate that face 90.";
+            hintTMP.text = "Drag a face onto another face to swap them. Drag a palette color onto a sticker to repaint.\nTap a center letter to rotate that face 90.";
 
             // Net root (center of panel, nudged down a little)
             var rootGO = new GameObject("NetRoot");
@@ -267,15 +268,16 @@ namespace RubiksCube.UI
 
             if (source.IsPalette)
             {
-                // Paint the target sticker with the palette color
+                // Paint the single target sticker with the palette color
                 state.faces[target.Face][target.Index] = ColorCycle[source.Index];
             }
-            else
+            else if (source.Face != target.Face)
             {
-                // Swap the two stickers
-                char tmp = state.faces[source.Face][source.Index];
-                state.faces[source.Face][source.Index] = state.faces[target.Face][target.Index];
-                state.faces[target.Face][target.Index] = tmp;
+                // Swap the ENTIRE faces (all 9 stickers) — fixes faces that
+                // were scanned in the wrong order
+                char[] tmp = state.faces[source.Face];
+                state.faces[source.Face] = state.faces[target.Face];
+                state.faces[target.Face] = tmp;
             }
 
             Refresh();
@@ -285,23 +287,58 @@ namespace RubiksCube.UI
         {
             EndGhost();
 
-            char c = cell.IsPalette
-                ? ColorCycle[cell.Index]
-                : state.faces[cell.Face][cell.Index];
-
             var go = new GameObject("DragGhost");
             go.transform.SetParent(transform, false);
             var rect = go.AddComponent<RectTransform>();
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(CellSize, CellSize);
 
-            ghost = go.AddComponent<Image>();
-            Color gc = detector != null ? detector.GetPreviewColor(c) : Color.gray;
-            gc.a = 0.8f;
-            ghost.color = gc;
-            ghost.raycastTarget = false; // must not block drop detection
+            if (cell.IsPalette)
+            {
+                // Single color swatch ghost
+                rect.sizeDelta = new Vector2(CellSize, CellSize);
+                ghost = go.AddComponent<Image>();
+                Color gc = detector != null
+                    ? detector.GetPreviewColor(ColorCycle[cell.Index])
+                    : Color.gray;
+                gc.a = 0.8f;
+                ghost.color = gc;
+                ghost.raycastTarget = false; // must not block drop detection
+            }
+            else
+            {
+                // Whole-face 3x3 mini ghost so the user sees which face moves
+                const float mini = 34f;
+                const float miniGap = 2f;
+                rect.sizeDelta = new Vector2(3 * mini + 2 * miniGap, 3 * mini + 2 * miniGap);
+
+                ghost = go.AddComponent<Image>();
+                ghost.color = new Color(0f, 0f, 0f, 0.25f);
+                ghost.raycastTarget = false;
+
+                for (int i = 0; i < 9; i++)
+                {
+                    int row = i / 3;
+                    int col = i % 3;
+
+                    var miniGO = new GameObject($"Mini_{i}");
+                    miniGO.transform.SetParent(go.transform, false);
+                    var miniRect = miniGO.AddComponent<RectTransform>();
+                    miniRect.sizeDelta = new Vector2(mini, mini);
+                    miniRect.anchoredPosition = new Vector2(
+                        (col - 1) * (mini + miniGap),
+                        (1 - row) * (mini + miniGap));
+
+                    var miniImg = miniGO.AddComponent<Image>();
+                    Color mc = detector != null
+                        ? detector.GetPreviewColor(state.faces[cell.Face][i])
+                        : Color.gray;
+                    mc.a = 0.85f;
+                    miniImg.color = mc;
+                    miniImg.raycastTarget = false;
+                }
+            }
 
             MoveGhost(eventData);
         }
