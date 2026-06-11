@@ -188,10 +188,15 @@ namespace RubiksCube.UI
                 img.color = Color.gray;
                 cellImages[face][i] = img;
 
+                // Every sticker (center included) is draggable: dragging moves
+                // the WHOLE face. Drag-begin cancels the click, so the center's
+                // tap-to-rotate still works when the finger doesn't move.
+                var cell = cellGO.AddComponent<CubeNetCell>();
+                cell.Init(this, face, i);
+
                 if (i == 4)
                 {
-                    // Center: tap to rotate the whole face (defines the face
-                    // color, so it is not draggable/swappable)
+                    // Center: tap (without dragging) rotates the face
                     var btn = cellGO.AddComponent<Button>();
                     int f = face;
                     btn.onClick.AddListener(() => RotateFace(f));
@@ -209,12 +214,6 @@ namespace RubiksCube.UI
                     labelTMP.alignment = TextAlignmentOptions.Center;
                     labelTMP.color = new Color(0f, 0f, 0f, 0.75f);
                     labelTMP.raycastTarget = false;
-                }
-                else
-                {
-                    // Sticker: drag to swap / drop target
-                    var cell = cellGO.AddComponent<CubeNetCell>();
-                    cell.Init(this, face, i);
                 }
             }
         }
@@ -266,8 +265,13 @@ namespace RubiksCube.UI
         {
             if (state == null || target.IsPalette) return;
 
+            Debug.Log($"[Net] Drop: source(face={source.Face},idx={source.Index},palette={source.IsPalette}) -> target(face={target.Face},idx={target.Index})");
+
             if (source.IsPalette)
             {
+                // Centers define the face — don't allow repainting them
+                if (target.Index == 4) return;
+
                 // Paint the single target sticker with the palette color
                 state.faces[target.Face][target.Index] = ColorCycle[source.Index];
             }
@@ -414,6 +418,7 @@ namespace RubiksCube.UI
 
         public void OnBeginDrag(PointerEventData eventData)
         {
+            Debug.Log($"[Net] BeginDrag: face={Face}, idx={Index}, palette={IsPalette}");
             net?.BeginGhost(this, eventData);
         }
 
