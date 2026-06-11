@@ -278,10 +278,11 @@ namespace RubiksCube.UI
             else
             {
                 Debug.LogWarning($"[UI] Validation failed: {error}");
-                // Go back to scanning and show the error where the user can see it
-                SetState(AppState.Scanning);
-                if (scanningUI != null)
-                    scanningUI.ShowMessage($"Scan invalid: {error}");
+                // Stay on the confirm screen so the user can fix stickers
+                // by tapping them instead of rescanning everything.
+                var netView = confirmPanel != null ? confirmPanel.GetComponent<CubeNetView>() : null;
+                if (netView != null)
+                    netView.SetStatus($"Invalid: {error}", true);
             }
         }
 
@@ -309,34 +310,18 @@ namespace RubiksCube.UI
 
         private void ShowConfirmPreview()
         {
+            if (confirmPanel == null) return;
+
             CubeState state = scanningUI.ScannedState;
 
-            // No preview cell grid in the scene yet — show a text summary
-            // of all 6 scanned faces so the user can verify before solving.
-            if (confirmPreviewCells == null || confirmPreviewCells.Length == 0)
-            {
-                string[] faceLabels = { "U", "R", "F", "D", "L", "B" };
-                var sb = new System.Text.StringBuilder("Scan result:\n");
-                for (int face = 0; face < 6; face++)
-                {
-                    var f = state.faces[face];
-                    sb.Append($"{faceLabels[face]}: {f[0]}{f[1]}{f[2]} {f[3]}{f[4]}{f[5]} {f[6]}{f[7]}{f[8]}\n");
-                }
-                SetPanelTitle(confirmPanel, sb.ToString());
-                return;
-            }
+            // Interactive unfolded-cube preview: shows all 6 faces assembled
+            // so the user can verify relative orientation, tap stickers to fix
+            // colors, and rotate faces photographed at the wrong angle.
+            var netView = confirmPanel.GetComponent<CubeNetView>();
+            if (netView == null)
+                netView = confirmPanel.AddComponent<CubeNetView>();
 
-            if (colorDetector == null) return;
-
-            int cellIdx = 0;
-            for (int face = 0; face < 6 && face < state.faces.Length; face++)
-            {
-                for (int i = 0; i < 9 && cellIdx < confirmPreviewCells.Length; i++, cellIdx++)
-                {
-                    if (confirmPreviewCells[cellIdx] != null)
-                        confirmPreviewCells[cellIdx].color = colorDetector.GetPreviewColor(state.faces[face][i]);
-                }
-            }
+            netView.Show(state, colorDetector, confirmOkButton, () => SetState(AppState.Scanning));
         }
 
         private IEnumerator SolveCoroutine()
@@ -394,9 +379,13 @@ namespace RubiksCube.UI
             else
             {
                 Debug.LogError($"[UI] Solve failed: {error}");
-                SetState(AppState.Scanning);
-                if (scanningUI != null)
-                    scanningUI.ShowMessage($"Solve failed: {error}\nPlease rescan carefully.");
+                // Return to the confirm screen — a failed solve usually means a
+                // face was photographed at the wrong angle. The user can fix it
+                // there (tap a center to rotate the face) instead of rescanning.
+                SetState(AppState.Confirm);
+                var netView = confirmPanel != null ? confirmPanel.GetComponent<CubeNetView>() : null;
+                if (netView != null)
+                    netView.SetStatus($"Solve failed: {error} — tap a center letter to fix face rotation, or Rescan", true);
             }
         }
     }
