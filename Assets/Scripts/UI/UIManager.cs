@@ -173,7 +173,9 @@ namespace RubiksCube.UI
                 case AppState.StepGuide:
                     SetPanel(stepPanel, true);
                     if (stepManager != null && currentSolution != null)
-                        stepManager.LoadSteps(currentSolution);
+                        stepManager.LoadSteps(currentSolution,
+                            scanningUI != null ? scanningUI.ScannedState : null,
+                            colorDetector);
                     break;
 
                 case AppState.Complete:

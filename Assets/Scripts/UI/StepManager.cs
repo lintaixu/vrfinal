@@ -4,6 +4,7 @@ using TMPro;
 using System.Collections.Generic;
 using RubiksCube.Data;
 using RubiksCube.AR;
+using RubiksCube.ColorDetection;
 
 namespace RubiksCube.UI
 {
@@ -21,6 +22,9 @@ namespace RubiksCube.UI
 
         private List<MoveStep> steps;
         private int currentIndex = 0;
+
+        private CubeDemo3D cubeDemo;
+        private ColorDetector colorDetector;
 
         public System.Action OnAllStepsComplete;
 
@@ -40,10 +44,21 @@ namespace RubiksCube.UI
             }
         }
 
-        public void LoadSteps(List<MoveStep> moveSteps)
+        public void LoadSteps(List<MoveStep> moveSteps, CubeState scannedState, ColorDetector detector)
         {
             steps = moveSteps;
             currentIndex = 0;
+            colorDetector = detector;
+
+            // Build the 3D demo cube (the primary, color-matched guide)
+            if (cubeDemo == null)
+            {
+                cubeDemo = gameObject.AddComponent<CubeDemo3D>();
+                cubeDemo.Initialize(transform);
+            }
+            if (scannedState != null)
+                cubeDemo.LoadSolution(scannedState, steps, colorDetector);
+
             UpdateDisplay();
         }
 
@@ -98,7 +113,11 @@ namespace RubiksCube.UI
                 nextButton.GetComponentInChildren<TextMeshProUGUI>().text =
                     currentIndex >= steps.Count - 1 ? "Done" : "Next";
 
-            // Update AR display
+            // 3D virtual cube — the primary guide (matches by color)
+            if (cubeDemo != null)
+                cubeDemo.ShowStep(currentIndex);
+
+            // AR arrow overlay (secondary; only active when an anchor exists)
             if (arStepGuide != null)
                 arStepGuide.ShowStep(step);
         }
