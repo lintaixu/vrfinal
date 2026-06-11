@@ -13,6 +13,11 @@ namespace RubiksCube.Solver
         {
             if (Instance == null) Instance = this;
             else Destroy(gameObject);
+
+            // Application.persistentDataPath is main-thread only — capture it
+            // here so the background solve thread can cache lookup tables.
+            Kociemba.CoordCube.CacheDir =
+                System.IO.Path.Combine(Application.persistentDataPath, "KociembaTables");
         }
 
         /// <summary>
@@ -40,11 +45,13 @@ namespace RubiksCube.Solver
 
             try
             {
-                string solution = Kociemba.SearchRuntime.solution(kociembaString, out string solveError);
+                // Two-phase Kociemba: ~20-move solutions for any legal state.
+                // First call builds lookup tables (slow once, then disk-cached).
+                string solution = Kociemba.Search.solution(kociembaString, 24, 15.0);
 
-                if (!string.IsNullOrEmpty(solveError))
+                if (solution != null && solution.StartsWith("Error"))
                 {
-                    error = $"Solver error: {solveError}";
+                    error = ErrorCodeToMessage(solution);
                     return false;
                 }
 
@@ -65,6 +72,22 @@ namespace RubiksCube.Solver
                 Debug.LogError($"[Solver] Exception: {e}");
                 return false;
             }
+        }
+
+        private static string ErrorCodeToMessage(string errorCode)
+        {
+            return errorCode switch
+            {
+                "Error 1" => "Each color must appear exactly 9 times",
+                "Error 2" => "Impossible edge pieces — check sticker colors",
+                "Error 3" => "An edge is flipped — a face was scanned at the wrong angle",
+                "Error 4" => "Impossible corner pieces — check sticker colors",
+                "Error 5" => "A corner is twisted — a face was scanned at the wrong angle",
+                "Error 6" => "Parity error — two faces are likely swapped or rotated",
+                "Error 7" => "No solution within move limit — check face orientations",
+                "Error 8" => "Solver timed out — please try again",
+                _ => $"Solver error: {errorCode}"
+            };
         }
 
         public static List<MoveStep> ParseMoves(string solutionString)

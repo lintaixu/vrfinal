@@ -357,7 +357,10 @@ namespace RubiksCube.UI
             while (!done)
             {
                 elapsed += Time.deltaTime;
-                SetPanelTitle(solvingPanel, $"Solving... {elapsed:F0}s");
+                // First launch builds solver lookup tables (cached afterwards)
+                SetPanelTitle(solvingPanel, elapsed > 3f
+                    ? $"Solving... {elapsed:F0}s\n(first run builds tables, please wait)"
+                    : $"Solving... {elapsed:F0}s");
                 yield return null;
             }
 

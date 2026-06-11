@@ -6,15 +6,18 @@ using RubiksCube.Solver;
 namespace RubiksCube.EditorTest
 {
     /// <summary>
-    /// Attach to any GameObject in the scene. Press T in Play mode to test the solver.
+    /// Attach to any GameObject in the scene. In Play mode:
+    ///   T = solve the facelet string below
+    ///   Y = solve from the 6 color strings below
+    ///   R = scramble a solved cube with real moves, then solve it
     /// </summary>
     public class SolverTest : MonoBehaviour
     {
-        [Header("測試用 Kociemba 字串")]
+        [Header("Kociemba facelet string to solve (T)")]
         [TextArea(2, 5)]
         [SerializeField] private string testFacelets = "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB";
 
-        [Header("手動輸入各面顏色 (9字元)")]
+        [Header("Face colors, 9 chars each (Y)")]
         [SerializeField] private string faceU = "WWWWWWWWW";
         [SerializeField] private string faceR = "RRRRRRRRR";
         [SerializeField] private string faceF = "GGGGGGGGG";
@@ -22,48 +25,46 @@ namespace RubiksCube.EditorTest
         [SerializeField] private string faceL = "OOOOOOOOO";
         [SerializeField] private string faceB = "BBBBBBBBB";
 
+        [Header("Scramble used by the R test")]
+        [SerializeField] private string scramble = "R U F' L2 D B R2 U' F D2 L B'";
+
         private void Update()
         {
             if (Input.GetKeyDown(KeyCode.T))
-                TestSolver();
+                TestSolver(testFacelets);
             if (Input.GetKeyDown(KeyCode.Y))
                 TestFromColorInput();
             if (Input.GetKeyDown(KeyCode.R))
                 TestScrambleAndSolve();
         }
 
-        private void TestSolver()
+        private void TestSolver(string facelets)
         {
-            Debug.Log("=== 測試求解器 (Kociemba 字串) ===");
-            Debug.Log($"輸入: {testFacelets}");
+            Debug.Log($"=== Solver test ===\nInput: {facelets}");
 
-            string result = Kociemba.SearchRuntime.solution(testFacelets, out string error);
+            float t0 = Time.realtimeSinceStartup;
+            string result = Kociemba.Search.solution(facelets, 24, 15.0);
+            float dt = Time.realtimeSinceStartup - t0;
 
-            if (error != null)
+            if (result != null && result.StartsWith("Error"))
             {
-                Debug.LogError($"錯誤: {error}");
+                Debug.LogError($"Solver failed: {result}");
                 return;
             }
 
             if (string.IsNullOrEmpty(result))
             {
-                Debug.Log("方塊已經是完成狀態！");
+                Debug.Log($"Cube is already solved! ({dt:F2}s)");
                 return;
             }
 
-            Debug.Log($"解法: {result}");
-
             var moves = KociembaSolver.ParseMoves(result);
-            Debug.Log($"共 {moves.Count} 步:");
-            for (int i = 0; i < moves.Count; i++)
-            {
-                Debug.Log($"  Step {i + 1}: {moves[i].notation} - {moves[i].GetDescription()}");
-            }
+            Debug.Log($"Solution ({moves.Count} moves, {dt:F2}s): {result}");
         }
 
         private void TestFromColorInput()
         {
-            Debug.Log("=== 測試求解器 (顏色輸入) ===");
+            Debug.Log("=== Solver test (color input) ===");
 
             var state = new CubeState();
             string[] inputs = { faceU, faceR, faceF, faceD, faceL, faceB };
@@ -72,7 +73,7 @@ namespace RubiksCube.EditorTest
             {
                 if (inputs[i].Length != 9)
                 {
-                    Debug.LogError($"面 {i} 長度不是 9: '{inputs[i]}'");
+                    Debug.LogError($"Face {i} length is not 9: '{inputs[i]}'");
                     return;
                 }
                 state.faces[i] = inputs[i].ToCharArray();
@@ -80,41 +81,51 @@ namespace RubiksCube.EditorTest
 
             if (!state.Validate(out string valError))
             {
-                Debug.LogError($"驗證失敗: {valError}");
+                Debug.LogError($"Validation failed: {valError}");
                 return;
             }
 
             string kociemba = state.ToKociembaString();
-            Debug.Log($"Kociemba 字串: {kociemba}");
-
-            string result = Kociemba.SearchRuntime.solution(kociemba, out string error);
-
-            if (error != null)
-                Debug.LogError($"求解錯誤: {error}");
-            else if (string.IsNullOrEmpty(result))
-                Debug.Log("已完成狀態！");
-            else
-                Debug.Log($"解法: {result}");
+            Debug.Log($"Kociemba string: {kociemba}");
+            TestSolver(kociemba);
         }
 
         private void TestScrambleAndSolve()
         {
-            Debug.Log("=== 測試：打亂再求解 ===");
+            Debug.Log($"=== Scramble & solve test ===\nScramble: {scramble}");
 
-            // Start with solved state, apply some moves, then solve
-            string scrambleMoves = "R U F' L2 D B";
-            Debug.Log($"打亂步驟: {scrambleMoves}");
+            string facelets = ApplyScramble(scramble);
+            if (facelets == null) return;
 
-            // Apply scramble to solved state and get the facelet string
-            string solved = "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB";
-            Debug.Log($"初始狀態: {solved}");
+            Debug.Log($"Scrambled state: {facelets}");
+            TestSolver(facelets);
+        }
 
-            // For now just test that the solver handles a simple state
-            string result = Kociemba.SearchRuntime.solution(solved, out string error);
-            if (error != null)
-                Debug.LogError($"錯誤: {error}");
-            else
-                Debug.Log($"已完成的方塊，解法: '{result}' (應為空)");
+        /// <summary>
+        /// Apply a scramble in standard notation to a solved cube and return
+        /// the resulting facelet string — generates guaranteed-legal states.
+        /// </summary>
+        private static string ApplyScramble(string scrambleMoves)
+        {
+            var cc = new Kociemba.CubieCube();
+            foreach (string token in scrambleMoves.Split(new[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries))
+            {
+                int axis = "URFDLB".IndexOf(token[0]);
+                if (axis < 0)
+                {
+                    Debug.LogError($"Bad scramble token: {token}");
+                    return null;
+                }
+                int power = 1;
+                if (token.Length > 1)
+                {
+                    if (token[1] == '2') power = 2;
+                    else if (token[1] == '\'') power = 3;
+                }
+                for (int p = 0; p < power; p++)
+                    cc.Multiply(Kociemba.CubieCube.moveCube[axis]);
+            }
+            return cc.ToFaceCube().ToFaceletString();
         }
     }
 }
