@@ -67,6 +67,11 @@ namespace RubiksCube.UI
 
         private void Start()
         {
+            // Recover references the editor auto-wirer missed (it used
+            // GameObject.Find, which cannot see inactive panels, so buttons
+            // inside hidden panels were never assigned).
+            ResolveMissingReferences();
+
             // Set all UI text to English (default font doesn't support Chinese)
             InitializeUIText();
 
@@ -184,6 +189,26 @@ namespace RubiksCube.UI
         private void SetPanel(GameObject panel, bool active)
         {
             if (panel != null) panel.SetActive(active);
+        }
+
+        private void ResolveMissingReferences()
+        {
+            if (startButton == null && startPanel != null)
+                startButton = startPanel.GetComponentInChildren<Button>(true);
+
+            if (confirmOkButton == null && confirmPanel != null)
+                confirmOkButton = confirmPanel.GetComponentInChildren<Button>(true);
+
+            if (restartButton == null && completionPanel != null)
+                restartButton = completionPanel.GetComponentInChildren<Button>(true);
+
+            if (planeHintText == null && planeDetectionPanel != null)
+                planeHintText = planeDetectionPanel.GetComponentInChildren<TextMeshProUGUI>(true);
+
+            if (completionText == null && completionPanel != null)
+                completionText = completionPanel.GetComponentInChildren<TextMeshProUGUI>(true);
+
+            Debug.Log($"[UI] References resolved: start={startButton != null}, confirmOk={confirmOkButton != null}, restart={restartButton != null}");
         }
 
         private void InitializeUIText()
@@ -320,19 +345,58 @@ namespace RubiksCube.UI
 
             CubeState state = scanningUI.ScannedState;
 
-            bool success = solver.Solve(state, out List<MoveStep> moves, out string error);
+            // Run the solver on a background thread — it can take up to ~10s
+            // and would otherwise freeze the whole UI.
+            List<MoveStep> moves = null;
+            string error = null;
+            bool success = false;
+            bool done = false;
 
-            if (success)
+            var thread = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    success = solver.Solve(state, out moves, out error);
+                }
+                catch (System.Exception e)
+                {
+                    success = false;
+                    error = e.Message;
+                }
+                done = true;
+            });
+            thread.IsBackground = true;
+            thread.Start();
+
+            float elapsed = 0f;
+            while (!done)
+            {
+                elapsed += Time.deltaTime;
+                SetPanelTitle(solvingPanel, $"Solving... {elapsed:F0}s");
+                yield return null;
+            }
+
+            if (success && moves != null && moves.Count > 0)
             {
                 currentSolution = moves;
                 Debug.Log($"[UI] Solution found: {moves.Count} moves");
                 SetState(AppState.StepGuide);
             }
+            else if (success)
+            {
+                // Empty solution = cube is already solved
+                currentSolution = new List<MoveStep>();
+                Debug.Log("[UI] Cube is already solved!");
+                SetState(AppState.Complete);
+                if (completionText != null)
+                    completionText.text = "Cube is already solved!\nScramble it and scan again.";
+            }
             else
             {
                 Debug.LogError($"[UI] Solve failed: {error}");
-                // Go back to scanning
                 SetState(AppState.Scanning);
+                if (scanningUI != null)
+                    scanningUI.ShowMessage($"Solve failed: {error}\nPlease rescan carefully.");
             }
         }
     }

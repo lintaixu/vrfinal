@@ -25,7 +25,7 @@ namespace RubiksCube.Solver
 
             if (!state.Validate(out string validationError))
             {
-                error = $"方塊狀態無效: {validationError}";
+                error = $"Invalid cube state: {validationError}";
                 return false;
             }
 
@@ -34,7 +34,7 @@ namespace RubiksCube.Solver
 
             if (kociembaString.Contains('?'))
             {
-                error = "方塊字串包含無法識別的顏色";
+                error = "Cube string contains unrecognized colors";
                 return false;
             }
 
@@ -44,14 +44,15 @@ namespace RubiksCube.Solver
 
                 if (!string.IsNullOrEmpty(solveError))
                 {
-                    error = $"求解錯誤: {solveError}";
+                    error = $"Solver error: {solveError}";
                     return false;
                 }
 
+                // Empty solution means the cube is already solved
                 if (string.IsNullOrEmpty(solution))
                 {
-                    error = "求解器未回傳結果";
-                    return false;
+                    Debug.Log("[Solver] Cube is already solved.");
+                    return true;
                 }
 
                 Debug.Log($"[Solver] Solution: {solution}");
@@ -60,7 +61,7 @@ namespace RubiksCube.Solver
             }
             catch (Exception e)
             {
-                error = $"求解過程發生例外: {e.Message}";
+                error = $"Solver exception: {e.Message}";
                 Debug.LogError($"[Solver] Exception: {e}");
                 return false;
             }
@@ -106,7 +107,7 @@ namespace RubiksCube.Solver
                 'B' => CubeFace.B,
                 'L' => CubeFace.L,
                 'R' => CubeFace.R,
-                _ => throw new ArgumentException($"未知的面符號: {c}")
+                _ => throw new ArgumentException($"Unknown face symbol: {c}")
             };
         }
     }
