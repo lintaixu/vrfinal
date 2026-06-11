@@ -257,7 +257,8 @@ namespace Kociemba
                                     case 12: case 14: case 15: case 17:
                                         continue;
                                     default:
-                                        int newSlice = FRtoBR_Move[slice * 24, j] / 24;
+                                        // Phase 2: slice IS the FRtoBR coordinate (0..23)
+                                        int newSlice = FRtoBR_Move[slice, j] % 24;
                                         int newURFtoDLF = URFtoDLF_Move[URFtoDLF, j];
                                         int newParity = parityMove2[parity, j];
                                         if (GetPruning(Slice_URFtoDLF_Parity_Prun,
@@ -302,7 +303,8 @@ namespace Kociemba
                                     case 12: case 14: case 15: case 17:
                                         continue;
                                     default:
-                                        int newSlice = FRtoBR_Move[slice * 24, j] / 24;
+                                        // Phase 2: slice IS the FRtoBR coordinate (0..23)
+                                        int newSlice = FRtoBR_Move[slice, j] % 24;
                                         int newURtoDF = URtoDF_Move[URtoDF, j];
                                         int newParity = parityMove2[parity, j];
                                         if (GetPruning(Slice_URtoDF_Parity_Prun,
