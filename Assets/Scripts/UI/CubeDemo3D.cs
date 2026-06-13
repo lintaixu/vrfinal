@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using UnityEngine.XR.ARFoundation;
+using UnityEngine.XR.ARSubsystems;
 using RubiksCube.Data;
 using RubiksCube.ColorDetection;
 
@@ -48,6 +49,15 @@ namespace RubiksCube.UI
         private bool gyroCalibrated;
         private Quaternion gyroOffset = Quaternion.identity;
         private Quaternion baseRotation = Quaternion.identity;
+
+        // World-anchor mode: when ARCore is tracking, freeze the cube in space
+        // so the user can physically walk around it (camera moves via the
+        // Tracked Pose Driver). Falls back to the gyro turntable otherwise.
+        private bool worldAnchored;
+        private GameObject anchorObj;
+        private TMPro.TextMeshProUGUI lockButtonLabel;
+        private TMPro.TextMeshProUGUI statusLabel;
+        private float stateLogTimer;
 
         // AR components disabled by scanning that we must turn back on
         private ARSession arSession;
@@ -125,6 +135,53 @@ namespace RubiksCube.UI
             btnTMP.fontSize = 26;
             btnTMP.alignment = TMPro.TextAlignmentOptions.Center;
             btnTMP.color = Color.white;
+
+            // "Lock in space" toggle — anchors the cube when ARCore is tracking
+            lockButtonLabel = CreateButton(uiParent, "LockButton",
+                new Vector2(0.04f, 0.17f), new Vector2(0.34f, 0.23f),
+                "Lock in space", new Color(0.2f, 0.7f, 0.4f, 0.85f), ToggleLock);
+
+            // Status line above the buttons (tracking hints)
+            var statusGO = new GameObject("ARStatus");
+            statusGO.transform.SetParent(uiParent, false);
+            var sRect = statusGO.AddComponent<RectTransform>();
+            sRect.anchorMin = new Vector2(0.04f, 0.24f);
+            sRect.anchorMax = new Vector2(0.96f, 0.29f);
+            sRect.offsetMin = Vector2.zero;
+            sRect.offsetMax = Vector2.zero;
+            statusLabel = statusGO.AddComponent<TMPro.TextMeshProUGUI>();
+            statusLabel.fontSize = 22;
+            statusLabel.alignment = TMPro.TextAlignmentOptions.Center;
+            statusLabel.color = new Color(1f, 0.9f, 0.4f);
+            statusLabel.text = "Rotate the phone to view the cube";
+        }
+
+        private TMPro.TextMeshProUGUI CreateButton(Transform parent, string name,
+            Vector2 anchorMin, Vector2 anchorMax, string text, Color color, UnityEngine.Events.UnityAction onClick)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            go.AddComponent<Image>().color = color;
+            go.AddComponent<Button>().onClick.AddListener(onClick);
+
+            var textGO = new GameObject("Text");
+            textGO.transform.SetParent(go.transform, false);
+            var tr = textGO.AddComponent<RectTransform>();
+            tr.anchorMin = Vector2.zero;
+            tr.anchorMax = Vector2.one;
+            tr.offsetMin = Vector2.zero;
+            tr.offsetMax = Vector2.zero;
+            var tmp = textGO.AddComponent<TMPro.TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.fontSize = 24;
+            tmp.alignment = TMPro.TextAlignmentOptions.Center;
+            tmp.color = Color.white;
+            return tmp;
         }
 
         // ------------------------------------------------------------- public API
@@ -176,11 +233,16 @@ namespace RubiksCube.UI
         {
             if (cubeRoot == null || !cubeRoot.gameObject.activeInHierarchy) return;
 
+            LogTrackingState();
+
+            // World-anchored: leave the cube fixed in space; the Tracked Pose
+            // Driver moves the camera as the user walks around it.
+            if (worldAnchored) return;
+
             var cam = Camera.main;
 
-            // Keep the cube centered in front of the camera. (6DoF tracking is
-            // unavailable, so we can't truly world-anchor it; instead it floats
-            // in front and the gyro spins it like a turntable.)
+            // Otherwise float it in front of the camera and use the gyro
+            // turntable (works without 6DoF tracking).
             if (cam != null)
                 cubeRoot.position = cam.transform.position + cam.transform.forward * PlaceDistance;
 
@@ -200,6 +262,59 @@ namespace RubiksCube.UI
             {
                 cubeRoot.rotation = baseRotation;
             }
+        }
+
+        private void LogTrackingState()
+        {
+            stateLogTimer -= Time.deltaTime;
+            if (stateLogTimer > 0f) return;
+            stateLogTimer = 1f;
+
+            if (!worldAnchored && statusLabel != null)
+            {
+                bool tracking = ARSession.state == ARSessionState.SessionTracking;
+                statusLabel.text = tracking
+                    ? "Tracking ready — tap 'Lock in space' to walk around it"
+                    : "Rotate phone to view. For 'Lock', aim at a textured surface & move";
+            }
+            Debug.Log($"[CubeDemo] ARSession.state = {ARSession.state}");
+        }
+
+        /// <summary>
+        /// Toggle between gyro turntable and world-anchored AR. Anchoring only
+        /// works when ARCore has established tracking.
+        /// </summary>
+        public void ToggleLock()
+        {
+            if (worldAnchored)
+            {
+                // Unlock → back to gyro turntable
+                worldAnchored = false;
+                if (anchorObj != null) { cubeRoot.SetParent(null, true); Destroy(anchorObj); anchorObj = null; }
+                gyroCalibrated = false;
+                if (lockButtonLabel != null) lockButtonLabel.text = "Lock in space";
+                if (statusLabel != null) statusLabel.text = "Rotate the phone to view the cube";
+                return;
+            }
+
+            if (ARSession.state != ARSessionState.SessionTracking)
+            {
+                if (statusLabel != null)
+                    statusLabel.text = "Not tracking yet — aim at a textured surface and move the phone slowly";
+                Debug.Log($"[CubeDemo] Lock refused, state={ARSession.state}");
+                return;
+            }
+
+            // Anchor the cube at its current world pose; the camera (driven by
+            // the pose driver) now moves around the fixed cube.
+            anchorObj = new GameObject("CubeWorldAnchor");
+            anchorObj.transform.SetPositionAndRotation(cubeRoot.position, cubeRoot.rotation);
+            cubeRoot.SetParent(anchorObj.transform, true);
+            worldAnchored = true;
+
+            if (lockButtonLabel != null) lockButtonLabel.text = "Free (gyro)";
+            if (statusLabel != null) statusLabel.text = "Locked — walk around the cube!";
+            Debug.Log("[CubeDemo] Cube world-anchored");
         }
 
         // Gyro attitude is right-handed; convert to Unity's left-handed frame.
