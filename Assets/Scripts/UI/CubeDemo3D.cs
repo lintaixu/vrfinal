@@ -40,6 +40,12 @@ namespace RubiksCube.UI
         private Coroutine previewRoutine;
         private bool built;
 
+        // Gyroscope turntable: rotate the phone to view the cube from any side.
+        // ARCore 6DoF tracking does not work in this close-up / handheld-cube
+        // scenario on this device, so we drive the view from the gyro instead.
+        private bool gyroReady;
+        [SerializeField] private float gyroSensitivity = 1.0f;
+
         // AR components disabled by scanning that we must turn back on
         private ARSession arSession;
         private ARCameraManager arCameraManager;
@@ -150,9 +156,40 @@ namespace RubiksCube.UI
                 stateLetters.Add(cc.ToFaceCube().ToFaceletString());
             }
 
+            // Enable the gyroscope so phone rotation orbits the cube
+            if (!gyroReady && SystemInfo.supportsGyroscope)
+            {
+                Input.gyro.enabled = true;
+                gyroReady = true;
+                Debug.Log("[CubeDemo] Gyroscope enabled — rotate the phone to view the cube");
+            }
+
             if (cubeRoot != null) cubeRoot.gameObject.SetActive(true);
             PlaceInFront();
             ShowStep(0);
+        }
+
+        private void Update()
+        {
+            if (cubeRoot == null || !cubeRoot.gameObject.activeInHierarchy) return;
+
+            var cam = Camera.main;
+
+            // Keep the cube centered in front of the camera. (6DoF tracking is
+            // unavailable, so we can't truly world-anchor it; instead it floats
+            // in front and the gyro spins it like a turntable.)
+            if (cam != null)
+                cubeRoot.position = cam.transform.position + cam.transform.forward * PlaceDistance;
+
+            // Phone angular velocity (rad/s) in device axes -> spin the cube,
+            // so turning/tilting the phone reveals the other faces.
+            if (gyroReady)
+            {
+                Vector3 rate = Input.gyro.rotationRateUnbiased;
+                float k = Mathf.Rad2Deg * Time.deltaTime * gyroSensitivity;
+                cubeRoot.Rotate(Vector3.up, -rate.y * k, Space.World);
+                cubeRoot.Rotate(cam != null ? cam.transform.right : Vector3.right, -rate.x * k, Space.World);
+            }
         }
 
         public void ShowStep(int index)
