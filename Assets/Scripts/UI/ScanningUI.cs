@@ -1,12 +1,21 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using Unity.Collections;
 using UnityEngine.XR.ARFoundation;
+using UnityEngine.XR.ARSubsystems;
 using RubiksCube.Data;
 using RubiksCube.ColorDetection;
 
 namespace RubiksCube.UI
 {
+    /// <summary>
+    /// Scans the six cube faces using the ARCore camera image (not WebCamTexture).
+    /// Keeping AR running the whole time means ARCore tracking is already solid
+    /// by the time the step guide needs to anchor the cube in space — and the
+    /// live AR feed (ARCameraBackground) is the scanning preview, so no second
+    /// camera owner ever fights ARCore for the device camera.
+    /// </summary>
     public class ScanningUI : MonoBehaviour
     {
         [Header("UI Elements")]
@@ -19,22 +28,21 @@ namespace RubiksCube.UI
 
         [Header("Grid Settings")]
         [SerializeField] private float gridScreenRatio = 0.6f;
+        [Tooltip("Rotate the sampled 3x3 grid: 0/90/180/270 to match screen orientation")]
+        [SerializeField] private int captureRotation = 90;
 
         [Header("Component References")]
         [SerializeField] private ColorDetector colorDetector;
-        [SerializeField] private RawImage cameraPreview;
+        [SerializeField] private RawImage cameraPreview; // unused now (AR feed is the preview)
 
-        private WebCamTexture webCamTexture;
+        private ARCameraManager arCameraManager;
+        private Texture2D captureTex;
+
         private CubeState cubeState;
         private int currentFaceIndex = 0;
         private bool isScanning = false;
         private bool cameraReady = false;
-
-        // AR camera components that must be disabled while WebCamTexture uses the camera
-        private ARCameraManager arCameraManager;
-        private ARCameraBackground arCameraBackground;
-        private ARSession arSession;
-        private float captureBlockTimer = 0f; // Prevent accidental rapid captures
+        private float captureBlockTimer = 0f;
 
         // Face scan order: U, R, F, D, L, B
         private static readonly string[] FaceNames = {
@@ -51,6 +59,14 @@ namespace RubiksCube.UI
         private void Start()
         {
             cubeState = new CubeState();
+
+            // Make the scanning panel transparent so the live AR feed shows
+            var bg = GetComponent<Image>();
+            if (bg != null)
+            {
+                var c = bg.color;
+                bg.color = new Color(c.r, c.g, c.b, 0f);
+            }
 
             if (captureButton != null)
             {
@@ -71,18 +87,15 @@ namespace RubiksCube.UI
             if (captureBlockTimer > 0f)
                 captureBlockTimer -= Time.deltaTime;
 
-            // Check if camera is ready (needs a few frames to initialize)
-            if (webCamTexture != null && webCamTexture.isPlaying && !cameraReady)
+            // Camera is "ready" once ARCore delivers a CPU image
+            if (isScanning && !cameraReady && arCameraManager != null)
             {
-                if (webCamTexture.width > 100) // Real frames loaded
+                if (arCameraManager.TryAcquireLatestCpuImage(out XRCpuImage probe))
                 {
+                    probe.Dispose();
                     cameraReady = true;
-                    ApplyCameraRotation();
-                    // BUGFIX: refresh UI so the Capture button becomes interactable.
-                    // Previously the button stayed disabled forever because UpdateUI
-                    // was only called before the camera was ready.
                     UpdateUI();
-                    Debug.Log($"[Scan] Camera ready: {webCamTexture.width}x{webCamTexture.height}, rotation={webCamTexture.videoRotationAngle}");
+                    Debug.Log("[Scan] ARCore camera image available — ready to capture");
                 }
             }
         }
@@ -93,16 +106,29 @@ namespace RubiksCube.UI
             cubeState = new CubeState();
             isScanning = true;
             cameraReady = false;
-            captureBlockTimer = 1.5f; // Block captures for 1.5s to prevent accidental taps
+            captureBlockTimer = 1.0f;
+
+            // Hide the old WebCamTexture RawImage so the AR feed shows through
+            if (cameraPreview != null) cameraPreview.gameObject.SetActive(false);
+
+            if (arCameraManager == null)
+                arCameraManager = FindFirstObjectByType<ARCameraManager>();
+
             MakeGridSquare();
-            InitCamera();
             UpdateUI();
         }
 
-        /// <summary>
-        /// Force the on-screen grid overlay to be a centered square so it
-        /// matches the square region sampled from the camera texture.
-        /// </summary>
+        public void StopScanning()
+        {
+            isScanning = false;
+        }
+
+        public void ShowMessage(string message)
+        {
+            if (hintText != null) hintText.text = message;
+        }
+
+        /// <summary>Center the on-screen grid overlay as a square.</summary>
         private void MakeGridSquare()
         {
             if (gridOverlay == null) return;
@@ -117,190 +143,33 @@ namespace RubiksCube.UI
             gridOverlay.sizeDelta = new Vector2(side, side);
         }
 
-        public void StopScanning()
-        {
-            isScanning = false;
-            StopCamera();
-        }
-
-        /// <summary>
-        /// Show a message in the hint area (e.g. validation errors).
-        /// Overridden by the next UpdateUI call.
-        /// </summary>
-        public void ShowMessage(string message)
-        {
-            if (hintText != null)
-                hintText.text = message;
-        }
-
-        private void InitCamera()
-        {
-            // CRITICAL: Disable AR Foundation camera so WebCamTexture can access the physical camera.
-            // On Android only one component can use the camera at a time.
-            DisableARCamera();
-
-            if (webCamTexture == null)
-            {
-                WebCamDevice[] devices = WebCamTexture.devices;
-                if (devices.Length == 0)
-                {
-                    Debug.LogError("[Scan] No camera found!");
-                    return;
-                }
-
-                // Prefer back camera
-                string camName = devices[0].name;
-                foreach (var d in devices)
-                {
-                    if (!d.isFrontFacing)
-                    {
-                        camName = d.name;
-                        break;
-                    }
-                }
-
-                Debug.Log($"[Scan] Using camera: {camName}");
-                webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
-            }
-
-            webCamTexture.Play();
-
-            if (cameraPreview != null)
-            {
-                cameraPreview.texture = webCamTexture;
-                cameraPreview.gameObject.SetActive(true);
-            }
-        }
-
-        private void ApplyCameraRotation()
-        {
-            if (cameraPreview == null || webCamTexture == null) return;
-
-            var rt = cameraPreview.rectTransform;
-            var parent = rt.parent as RectTransform;
-            if (parent == null) return;
-
-            int rot = webCamTexture.videoRotationAngle;
-            bool mirror = webCamTexture.videoVerticallyMirrored;
-
-            // Center the preview so rotation and sizing behave predictably.
-            // (Full-stretch anchors made sizeDelta additive, causing wrong zoom.)
-            rt.anchorMin = new Vector2(0.5f, 0.5f);
-            rt.anchorMax = new Vector2(0.5f, 0.5f);
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = Vector2.zero;
-            rt.localEulerAngles = new Vector3(0, 0, -rot);
-            rt.localScale = mirror ? new Vector3(1, -1, 1) : Vector3.one;
-
-            float texW = webCamTexture.width;
-            float texH = webCamTexture.height;
-            float screenW = parent.rect.width;
-            float screenH = parent.rect.height;
-
-            // Footprint on screen after rotation
-            bool rotated = (rot == 90 || rot == 270);
-            float dispW = rotated ? texH : texW;
-            float dispH = rotated ? texW : texH;
-
-            // "Cover" scaling: fill the screen, keep aspect, crop overflow
-            float scale = Mathf.Max(screenW / dispW, screenH / dispH);
-            previewCoverScale = scale;
-
-            // sizeDelta is applied BEFORE rotation, so always use texture orientation
-            rt.sizeDelta = new Vector2(texW * scale, texH * scale);
-
-            Debug.Log($"[Scan] Camera preview: angle={rot}, mirror={mirror}, scale={scale:F3}, tex={texW}x{texH}, screen={screenW}x{screenH}");
-        }
-
-        // Screen-pixels per texture-pixel of the preview; used to map the
-        // on-screen grid square back onto the captured texture.
-        private float previewCoverScale = 1f;
-
-        private void StopCamera()
-        {
-            if (webCamTexture != null && webCamTexture.isPlaying)
-                webCamTexture.Stop();
-        }
-
-        private void DisableARCamera()
-        {
-            if (arCameraManager == null)
-                arCameraManager = FindFirstObjectByType<ARCameraManager>();
-            if (arCameraBackground == null)
-                arCameraBackground = FindFirstObjectByType<ARCameraBackground>();
-            if (arSession == null)
-                arSession = FindFirstObjectByType<ARSession>();
-
-            if (arSession != null) arSession.enabled = false;
-            if (arCameraManager != null) arCameraManager.enabled = false;
-            if (arCameraBackground != null) arCameraBackground.enabled = false;
-
-            Debug.Log("[Scan] AR camera disabled to free up physical camera for scanning");
-        }
-
         private void OnCaptureClicked()
         {
             if (!isScanning || currentFaceIndex >= 6) return;
-            if (webCamTexture == null || !webCamTexture.isPlaying) return;
-            if (!cameraReady)
+            if (!cameraReady || arCameraManager == null)
             {
                 Debug.LogWarning("[Scan] Camera not ready yet, ignoring capture");
                 return;
             }
-            if (captureBlockTimer > 0f)
+            if (captureBlockTimer > 0f) return;
+            captureBlockTimer = 0.8f;
+
+            if (!TryCaptureCenterSquare(out Texture2D square))
             {
-                Debug.Log("[Scan] Capture blocked (cooldown)");
+                Debug.LogWarning("[Scan] Could not acquire camera image");
                 return;
             }
 
-            // Set cooldown to prevent rapid taps
-            captureBlockTimer = 0.8f;
-
-            // Capture current frame - handle rotation
-            int w = webCamTexture.width;
-            int h = webCamTexture.height;
-            Texture2D snapshot = new Texture2D(w, h, TextureFormat.RGB24, false);
-            snapshot.SetPixels(webCamTexture.GetPixels());
-            snapshot.Apply();
-
-            // Rotate snapshot to correct orientation if needed
-            int rotation = webCamTexture.videoRotationAngle;
-            bool mirrored = webCamTexture.videoVerticallyMirrored;
-            Texture2D corrected = RotateTexture(snapshot, rotation, mirrored);
-            Destroy(snapshot);
-
-            // Map the on-screen grid square back onto the corrected texture.
-            // The preview "covers" the screen at previewCoverScale, both centered,
-            // so the texture region is the screen square divided by that scale.
-            float gridSize;
-            var panelRect = transform as RectTransform;
-            if (previewCoverScale > 0f && panelRect != null)
-            {
-                float screenSide = panelRect.rect.width * gridScreenRatio;
-                gridSize = screenSide / previewCoverScale;
-            }
-            else
-            {
-                gridSize = Mathf.Min(corrected.width, corrected.height) * gridScreenRatio;
-            }
-            gridSize = Mathf.Min(gridSize, Mathf.Min(corrected.width, corrected.height));
-            int gx = (int)((corrected.width - gridSize) / 2);
-            int gy = (int)((corrected.height - gridSize) / 2);
-            var region = new RectInt(gx, gy, (int)gridSize, (int)gridSize);
-
-            // Detect colors
-            char[] faceColors = colorDetector.AnalyzeFace(corrected, region);
+            // Detect colors over the whole square (it is already the grid region)
+            var region = new RectInt(0, 0, square.width, square.height);
+            char[] raw = colorDetector.AnalyzeFace(square, region);
+            char[] faceColors = RotateFacelets(raw, captureRotation);
             cubeState.faces[currentFaceIndex] = faceColors;
 
-            // Log detected colors with debug info
-            Color avgCenter = colorDetector.GetAverageColor(corrected, corrected.width / 2, corrected.height / 2, 40);
-            Color.RGBToHSV(avgCenter, out float ch, out float cs, out float cv);
-            Debug.Log($"[Scan] Face {currentFaceIndex} ({FaceNames[currentFaceIndex]}): {new string(faceColors)} | Center HSV=({ch * 360:F0},{cs:F2},{cv:F2}) | Tex={corrected.width}x{corrected.height}");
+            Debug.Log($"[Scan] Face {currentFaceIndex} ({FaceNames[currentFaceIndex]}): {new string(faceColors)} (raw {new string(raw)})");
 
-            // Update preview
             UpdateColorPreview(faceColors);
-
-            Destroy(corrected);
+            Destroy(square);
 
             currentFaceIndex++;
             UpdateUI();
@@ -308,77 +177,67 @@ namespace RubiksCube.UI
             if (currentFaceIndex >= 6)
             {
                 isScanning = false;
-                StopCamera();
                 OnScanComplete?.Invoke();
             }
         }
 
-        private Texture2D RotateTexture(Texture2D src, int angle, bool mirror)
+        /// <summary>
+        /// Acquire the latest ARCore CPU image and return its centered square
+        /// cropped + downscaled to a small Texture2D for color analysis.
+        /// </summary>
+        private bool TryCaptureCenterSquare(out Texture2D result)
         {
-            if (angle == 0 && !mirror) return DuplicateTexture(src);
+            result = null;
+            if (!arCameraManager.TryAcquireLatestCpuImage(out XRCpuImage image))
+                return false;
 
-            Color[] srcPixels = src.GetPixels();
-            int srcW = src.width;
-            int srcH = src.height;
-
-            int dstW, dstH;
-            if (angle == 90 || angle == 270)
+            using (image)
             {
-                dstW = srcH;
-                dstH = srcW;
-            }
-            else
-            {
-                dstW = srcW;
-                dstH = srcH;
-            }
+                int side = Mathf.Min(image.width, image.height);
+                int ox = (image.width - side) / 2;
+                int oy = (image.height - side) / 2;
+                const int outSize = 150; // small is plenty for color voting
 
-            Color[] dstPixels = new Color[dstW * dstH];
-
-            for (int y = 0; y < dstH; y++)
-            {
-                for (int x = 0; x < dstW; x++)
+                var conv = new XRCpuImage.ConversionParams
                 {
-                    int srcX, srcY;
-                    switch (angle)
-                    {
-                        case 90:
-                            srcX = y;
-                            srcY = dstW - 1 - x;
-                            break;
-                        case 180:
-                            srcX = srcW - 1 - x;
-                            srcY = srcH - 1 - y;
-                            break;
-                        case 270:
-                            srcX = srcH - 1 - y;
-                            srcY = x;
-                            break;
-                        default:
-                            srcX = x;
-                            srcY = y;
-                            break;
-                    }
+                    inputRect = new RectInt(ox, oy, side, side),
+                    outputDimensions = new Vector2Int(outSize, outSize),
+                    outputFormat = TextureFormat.RGBA32,
+                    transformation = XRCpuImage.Transformation.None
+                };
 
-                    if (mirror) srcY = srcH - 1 - srcY;
+                int dataSize = image.GetConvertedDataSize(conv);
+                var buffer = new NativeArray<byte>(dataSize, Allocator.Temp);
+                image.Convert(conv, buffer);
 
-                    if (srcX >= 0 && srcX < srcW && srcY >= 0 && srcY < srcH)
-                        dstPixels[y * dstW + x] = srcPixels[srcY * srcW + srcX];
-                }
+                if (captureTex == null)
+                    captureTex = new Texture2D(outSize, outSize, TextureFormat.RGBA32, false);
+                captureTex.LoadRawTextureData(buffer);
+                captureTex.Apply();
+                buffer.Dispose();
             }
 
-            Texture2D dst = new Texture2D(dstW, dstH, TextureFormat.RGB24, false);
-            dst.SetPixels(dstPixels);
-            dst.Apply();
-            return dst;
+            // Return a copy the caller can Destroy
+            result = new Texture2D(captureTex.width, captureTex.height, TextureFormat.RGBA32, false);
+            result.SetPixels(captureTex.GetPixels());
+            result.Apply();
+            return true;
         }
 
-        private Texture2D DuplicateTexture(Texture2D src)
+        /// <summary>Rotate a 3x3 facelet array by 0/90/180/270 degrees (CW).</summary>
+        private static char[] RotateFacelets(char[] f, int degrees)
         {
-            Texture2D dst = new Texture2D(src.width, src.height, src.format, false);
-            dst.SetPixels(src.GetPixels());
-            dst.Apply();
-            return dst;
+            int steps = ((degrees / 90) % 4 + 4) % 4;
+            char[] cur = (char[])f.Clone();
+            for (int s = 0; s < steps; s++)
+            {
+                char[] outF = new char[9];
+                for (int r = 0; r < 3; r++)
+                    for (int c = 0; c < 3; c++)
+                        outF[c * 3 + (2 - r)] = cur[r * 3 + c]; // 90° CW
+                cur = outF;
+            }
+            return cur;
         }
 
         private void OnRetakeClicked()
@@ -397,7 +256,9 @@ namespace RubiksCube.UI
                 progressText.text = $"Scanned {currentFaceIndex} / 6 faces";
 
             if (hintText != null && currentFaceIndex < 6)
-                hintText.text = $"Aim at: {FaceNames[currentFaceIndex]}";
+                hintText.text = cameraReady
+                    ? $"Aim at: {FaceNames[currentFaceIndex]}"
+                    : "Starting camera...";
             else if (hintText != null)
                 hintText.text = "Scan complete!";
 
