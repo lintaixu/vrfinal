@@ -43,8 +43,11 @@ namespace RubiksCube.UI
         // Gyroscope turntable: rotate the phone to view the cube from any side.
         // ARCore 6DoF tracking does not work in this close-up / handheld-cube
         // scenario on this device, so we drive the view from the gyro instead.
+        // Use absolute attitude (not rate integration) for a drift-free 1:1 feel.
         private bool gyroReady;
-        [SerializeField] private float gyroSensitivity = 1.0f;
+        private bool gyroCalibrated;
+        private Quaternion gyroOffset = Quaternion.identity;
+        private Quaternion baseRotation = Quaternion.identity;
 
         // AR components disabled by scanning that we must turn back on
         private ARSession arSession;
@@ -181,15 +184,28 @@ namespace RubiksCube.UI
             if (cam != null)
                 cubeRoot.position = cam.transform.position + cam.transform.forward * PlaceDistance;
 
-            // Phone angular velocity (rad/s) in device axes -> spin the cube,
-            // so turning/tilting the phone reveals the other faces.
+            // Absolute-attitude mapping: cube orientation tracks the phone's
+            // orientation 1:1 — no drift, rock-solid when the phone is still.
             if (gyroReady)
             {
-                Vector3 rate = Input.gyro.rotationRateUnbiased;
-                float k = Mathf.Rad2Deg * Time.deltaTime * gyroSensitivity;
-                cubeRoot.Rotate(Vector3.up, -rate.y * k, Space.World);
-                cubeRoot.Rotate(cam != null ? cam.transform.right : Vector3.right, -rate.x * k, Space.World);
+                Quaternion att = GyroToUnity(Input.gyro.attitude);
+                if (!gyroCalibrated)
+                {
+                    gyroOffset = baseRotation * Quaternion.Inverse(att);
+                    gyroCalibrated = true;
+                }
+                cubeRoot.rotation = gyroOffset * att;
             }
+            else
+            {
+                cubeRoot.rotation = baseRotation;
+            }
+        }
+
+        // Gyro attitude is right-handed; convert to Unity's left-handed frame.
+        private static Quaternion GyroToUnity(Quaternion q)
+        {
+            return new Quaternion(q.x, q.y, -q.z, -q.w);
         }
 
         public void ShowStep(int index)
@@ -217,15 +233,22 @@ namespace RubiksCube.UI
 
             Vector3 flatForward = new Vector3(fwd.x, 0f, fwd.z);
             if (flatForward.sqrMagnitude < 0.001f) flatForward = Vector3.forward;
-            cubeRoot.rotation = Quaternion.LookRotation(flatForward.normalized, Vector3.up);
+            baseRotation = Quaternion.LookRotation(flatForward.normalized, Vector3.up);
+            cubeRoot.rotation = baseRotation;
+
+            // Re-sync the gyro so "Recenter" faces the cube at the user again
+            gyroCalibrated = false;
         }
 
         public void Orbit(Vector2 delta)
         {
             if (cubeRoot == null) return;
-            cubeRoot.Rotate(Vector3.up, -delta.x * 0.3f, Space.World);
-            cubeRoot.Rotate(Camera.main != null ? Camera.main.transform.right : Vector3.right,
-                            delta.y * 0.3f, Space.World);
+            Vector3 right = Camera.main != null ? Camera.main.transform.right : Vector3.right;
+            Quaternion d = Quaternion.AngleAxis(-delta.x * 0.3f, Vector3.up)
+                         * Quaternion.AngleAxis(delta.y * 0.3f, right);
+            // Fold drag into the offset so it composes with the gyro tracking
+            gyroOffset = d * gyroOffset;
+            baseRotation = d * baseRotation;
         }
 
         private void OnEnable()
