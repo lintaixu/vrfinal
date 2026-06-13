@@ -30,6 +30,8 @@ namespace RubiksCube.UI
         [SerializeField] private float gridScreenRatio = 0.6f;
         [Tooltip("Rotate the sampled 3x3 grid: 0/90/180/270 to match screen orientation")]
         [SerializeField] private int captureRotation = 90;
+        [Tooltip("ARCore CPU image often comes back as BGRA — swap R/B to fix colors")]
+        [SerializeField] private bool swapRedBlue = true;
 
         [Header("Component References")]
         [SerializeField] private ColorDetector colorDetector;
@@ -221,9 +223,18 @@ namespace RubiksCube.UI
                 buffer.Dispose();
             }
 
-            // Return a copy the caller can Destroy
+            // Return a copy the caller can Destroy, fixing channel order if needed
+            Color[] px = captureTex.GetPixels();
+            if (swapRedBlue)
+            {
+                for (int i = 0; i < px.Length; i++)
+                {
+                    var c = px[i];
+                    px[i] = new Color(c.b, c.g, c.r, c.a);
+                }
+            }
             result = new Texture2D(captureTex.width, captureTex.height, TextureFormat.RGBA32, false);
-            result.SetPixels(captureTex.GetPixels());
+            result.SetPixels(px);
             result.Apply();
             return true;
         }
