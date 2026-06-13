@@ -214,6 +214,10 @@ namespace RubiksCube.UI
             if (arCameraManager != null) arCameraManager.enabled = true;
             if (arCameraBackground != null) arCameraBackground.enabled = true;
 
+            // Make sure the camera actually follows the phone's motion so the
+            // user can walk around the anchored cube (not just drag it).
+            RubiksCube.AR.ARCameraPoseDriver.Ensure(Camera.main);
+
             Debug.Log("[CubeDemo] AR camera re-enabled for world-space step guide");
         }
 

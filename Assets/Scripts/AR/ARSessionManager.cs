@@ -28,6 +28,13 @@ namespace RubiksCube.AR
         {
             if (Instance == null) Instance = this;
             else { Destroy(gameObject); return; }
+
+            // The manually-built scene's AR camera lacks a Tracked Pose Driver,
+            // so it never follows the phone. Add it so AR tracking works.
+            var cam = Camera.main;
+            if (cam == null && planeManager != null)
+                cam = planeManager.GetComponentInChildren<Camera>();
+            ARCameraPoseDriver.Ensure(cam);
         }
 
         private void OnEnable()
