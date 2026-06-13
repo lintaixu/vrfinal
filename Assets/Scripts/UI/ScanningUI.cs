@@ -1,20 +1,20 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using Unity.Collections;
 using UnityEngine.XR.ARFoundation;
-using UnityEngine.XR.ARSubsystems;
 using RubiksCube.Data;
 using RubiksCube.ColorDetection;
 
 namespace RubiksCube.UI
 {
     /// <summary>
-    /// Scans the six cube faces using the ARCore camera image (not WebCamTexture).
-    /// Keeping AR running the whole time means ARCore tracking is already solid
-    /// by the time the step guide needs to anchor the cube in space — and the
-    /// live AR feed (ARCameraBackground) is the scanning preview, so no second
-    /// camera owner ever fights ARCore for the device camera.
+    /// Scans the six cube faces by reading back the on-screen pixels of the
+    /// live AR feed. ARCameraBackground does the YUV→RGB conversion correctly
+    /// on the GPU (what you see is correct), whereas the CPU-image path
+    /// (XRCpuImage.Convert) produced a near-grayscale, blue-suppressed image on
+    /// this device. AR runs continuously so tracking stays solid for the step
+    /// guide; we just grab the framebuffer for one frame with the UI hidden.
     /// </summary>
     public class ScanningUI : MonoBehaviour
     {
@@ -28,22 +28,21 @@ namespace RubiksCube.UI
 
         [Header("Grid Settings")]
         [SerializeField] private float gridScreenRatio = 0.6f;
-        [Tooltip("Rotate the sampled 3x3 grid: 0/90/180/270 to match screen orientation")]
-        [SerializeField] private int captureRotation = 90;
-        [Tooltip("ARCore CPU image often comes back as BGRA — swap R/B to fix colors")]
-        [SerializeField] private bool swapRedBlue = false;
+        [Tooltip("Rotate the sampled 3x3 grid: 0/90/180/270 to match orientation")]
+        [SerializeField] private int captureRotation = 0;
 
         [Header("Component References")]
         [SerializeField] private ColorDetector colorDetector;
-        [SerializeField] private RawImage cameraPreview; // unused now (AR feed is the preview)
+        [SerializeField] private RawImage cameraPreview; // unused (AR feed is the preview)
 
         private ARCameraManager arCameraManager;
-        private Texture2D captureTex;
+        private CanvasGroup panelGroup;
 
         private CubeState cubeState;
         private int currentFaceIndex = 0;
         private bool isScanning = false;
         private bool cameraReady = false;
+        private bool capturing = false;
         private float captureBlockTimer = 0f;
 
         // Face scan order: U, R, F, D, L, B
@@ -70,6 +69,10 @@ namespace RubiksCube.UI
                 bg.color = new Color(c.r, c.g, c.b, 0f);
             }
 
+            // CanvasGroup lets us hide all overlay UI for the capture frame
+            panelGroup = GetComponent<CanvasGroup>();
+            if (panelGroup == null) panelGroup = gameObject.AddComponent<CanvasGroup>();
+
             if (captureButton != null)
             {
                 captureButton.onClick.AddListener(OnCaptureClicked);
@@ -88,17 +91,15 @@ namespace RubiksCube.UI
         {
             if (captureBlockTimer > 0f)
                 captureBlockTimer -= Time.deltaTime;
+        }
 
-            // Camera is "ready" once ARCore delivers a CPU image
-            if (isScanning && !cameraReady && arCameraManager != null)
+        private void OnFrameReceived(ARCameraFrameEventArgs args)
+        {
+            if (!cameraReady)
             {
-                if (arCameraManager.TryAcquireLatestCpuImage(out XRCpuImage probe))
-                {
-                    probe.Dispose();
-                    cameraReady = true;
-                    UpdateUI();
-                    Debug.Log("[Scan] ARCore camera image available — ready to capture");
-                }
+                cameraReady = true;
+                UpdateUI();
+                Debug.Log("[Scan] AR feed live — ready to capture");
             }
         }
 
@@ -110,11 +111,12 @@ namespace RubiksCube.UI
             cameraReady = false;
             captureBlockTimer = 1.0f;
 
-            // Hide the old WebCamTexture RawImage so the AR feed shows through
             if (cameraPreview != null) cameraPreview.gameObject.SetActive(false);
 
             if (arCameraManager == null)
                 arCameraManager = FindFirstObjectByType<ARCameraManager>();
+            if (arCameraManager != null)
+                arCameraManager.frameReceived += OnFrameReceived;
 
             MakeGridSquare();
             UpdateUI();
@@ -123,6 +125,14 @@ namespace RubiksCube.UI
         public void StopScanning()
         {
             isScanning = false;
+            if (arCameraManager != null)
+                arCameraManager.frameReceived -= OnFrameReceived;
+        }
+
+        private void OnDisable()
+        {
+            if (arCameraManager != null)
+                arCameraManager.frameReceived -= OnFrameReceived;
         }
 
         public void ShowMessage(string message)
@@ -148,41 +158,55 @@ namespace RubiksCube.UI
         private void OnCaptureClicked()
         {
             if (!isScanning || currentFaceIndex >= 6) return;
-            if (!cameraReady || arCameraManager == null)
+            if (!cameraReady)
             {
                 Debug.LogWarning("[Scan] Camera not ready yet, ignoring capture");
                 return;
             }
-            if (captureBlockTimer > 0f) return;
+            if (captureBlockTimer > 0f || capturing) return;
+
             captureBlockTimer = 0.8f;
+            StartCoroutine(CaptureRoutine());
+        }
 
-            if (!TryCaptureCenterSquare(out Texture2D square))
-            {
-                Debug.LogWarning("[Scan] Could not acquire camera image");
-                return;
-            }
+        private IEnumerator CaptureRoutine()
+        {
+            capturing = true;
 
-            // Detect colors over the whole square (it is already the grid region)
-            var region = new RectInt(0, 0, square.width, square.height);
-            char[] raw = colorDetector.AnalyzeFace(square, region);
+            // Hide overlay UI so the screenshot is just the AR camera feed
+            if (panelGroup != null) panelGroup.alpha = 0f;
+            yield return new WaitForEndOfFrame();
+
+            Texture2D screen = ScreenCapture.CaptureScreenshotAsTexture();
+
+            if (panelGroup != null) panelGroup.alpha = 1f;
+
+            // Centered square matching the on-screen grid box
+            int boxSide = Mathf.Min(
+                (int)(screen.width * gridScreenRatio),
+                Mathf.Min(screen.width, screen.height));
+            int ox = (screen.width - boxSide) / 2;
+            int oy = (screen.height - boxSide) / 2;
+            var region = new RectInt(ox, oy, boxSide, boxSide);
+
+            char[] raw = colorDetector.AnalyzeFace(screen, region);
             char[] faceColors = RotateFacelets(raw, captureRotation);
             cubeState.faces[currentFaceIndex] = faceColors;
 
-            // DIAGNOSTIC: sample the 9 cell centers' real RGB so we can see what
-            // the camera image actually contains (channel order / cast / region).
+            // Diagnostic: real RGB at each cell center
             var sb = new System.Text.StringBuilder();
             for (int gr = 0; gr < 3; gr++)
                 for (int gc = 0; gc < 3; gc++)
                 {
-                    int px = (int)((gc + 0.5f) / 3f * square.width);
-                    int py = (int)((gr + 0.5f) / 3f * square.height);
-                    Color cc = square.GetPixel(px, py);
+                    int px = ox + (int)((gc + 0.5f) / 3f * boxSide);
+                    int py = oy + (int)((gr + 0.5f) / 3f * boxSide);
+                    Color cc = screen.GetPixel(px, py);
                     sb.Append($"[{(int)(cc.r * 255)},{(int)(cc.g * 255)},{(int)(cc.b * 255)}] ");
                 }
-            Debug.Log($"[Scan] Face {currentFaceIndex} ({FaceNames[currentFaceIndex]}): {new string(faceColors)} (raw {new string(raw)})\n  cellRGB: {sb}");
+            Debug.Log($"[Scan] Face {currentFaceIndex} ({FaceNames[currentFaceIndex]}): {new string(faceColors)} (raw {new string(raw)})\n  screen={screen.width}x{screen.height} box={boxSide} cellRGB: {sb}");
 
+            Destroy(screen);
             UpdateColorPreview(faceColors);
-            Destroy(square);
 
             currentFaceIndex++;
             UpdateUI();
@@ -192,62 +216,8 @@ namespace RubiksCube.UI
                 isScanning = false;
                 OnScanComplete?.Invoke();
             }
-        }
 
-        /// <summary>
-        /// Acquire the latest ARCore CPU image and return its centered square
-        /// cropped + downscaled to a small Texture2D for color analysis.
-        /// </summary>
-        private bool TryCaptureCenterSquare(out Texture2D result)
-        {
-            result = null;
-            if (!arCameraManager.TryAcquireLatestCpuImage(out XRCpuImage image))
-                return false;
-
-            using (image)
-            {
-                // Crop only the centered region the user aims the cube into,
-                // matching the on-screen grid box (gridScreenRatio of the view).
-                // Taking the full square sampled background around the cube.
-                int side = Mathf.RoundToInt(Mathf.Min(image.width, image.height) * gridScreenRatio);
-                int ox = (image.width - side) / 2;
-                int oy = (image.height - side) / 2;
-                // Keep enough resolution that thin ring-sticker colors survive
-                const int outSize = 240;
-
-                var conv = new XRCpuImage.ConversionParams
-                {
-                    inputRect = new RectInt(ox, oy, side, side),
-                    outputDimensions = new Vector2Int(outSize, outSize),
-                    outputFormat = TextureFormat.RGBA32,
-                    transformation = XRCpuImage.Transformation.None
-                };
-
-                int dataSize = image.GetConvertedDataSize(conv);
-                var buffer = new NativeArray<byte>(dataSize, Allocator.Temp);
-                image.Convert(conv, buffer);
-
-                if (captureTex == null)
-                    captureTex = new Texture2D(outSize, outSize, TextureFormat.RGBA32, false);
-                captureTex.LoadRawTextureData(buffer);
-                captureTex.Apply();
-                buffer.Dispose();
-            }
-
-            // Return a copy the caller can Destroy, fixing channel order if needed
-            Color[] px = captureTex.GetPixels();
-            if (swapRedBlue)
-            {
-                for (int i = 0; i < px.Length; i++)
-                {
-                    var c = px[i];
-                    px[i] = new Color(c.b, c.g, c.r, c.a);
-                }
-            }
-            result = new Texture2D(captureTex.width, captureTex.height, TextureFormat.RGBA32, false);
-            result.SetPixels(px);
-            result.Apply();
-            return true;
+            capturing = false;
         }
 
         /// <summary>Rotate a 3x3 facelet array by 0/90/180/270 degrees (CW).</summary>
