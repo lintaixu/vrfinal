@@ -309,10 +309,10 @@ namespace RubiksCube.UI
             switch (face)
             {
                 case 0: coord = new Vector3Int(c - 1, 1, 1 - r); break;        // U
-                case 1: coord = new Vector3Int(1, 1 - r, 1 - c); break;        // R
+                case 1: coord = new Vector3Int(1, 1 - r, c - 1); break;        // R
                 case 2: coord = new Vector3Int(c - 1, 1 - r, -1); break;       // F
                 case 3: coord = new Vector3Int(c - 1, -1, r - 1); break;       // D
-                case 4: coord = new Vector3Int(-1, 1 - r, c - 1); break;       // L
+                case 4: coord = new Vector3Int(-1, 1 - r, 1 - c); break;       // L
                 default: coord = new Vector3Int(1 - c, 1 - r, 1); break;       // B
             }
         }
