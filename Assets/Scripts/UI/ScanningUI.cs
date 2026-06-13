@@ -193,10 +193,14 @@ namespace RubiksCube.UI
 
             using (image)
             {
-                int side = Mathf.Min(image.width, image.height);
+                // Crop only the centered region the user aims the cube into,
+                // matching the on-screen grid box (gridScreenRatio of the view).
+                // Taking the full square sampled background around the cube.
+                int side = Mathf.RoundToInt(Mathf.Min(image.width, image.height) * gridScreenRatio);
                 int ox = (image.width - side) / 2;
                 int oy = (image.height - side) / 2;
-                const int outSize = 150; // small is plenty for color voting
+                // Keep enough resolution that thin ring-sticker colors survive
+                const int outSize = 240;
 
                 var conv = new XRCpuImage.ConversionParams
                 {
