@@ -31,7 +31,7 @@ namespace RubiksCube.UI
         [Tooltip("Rotate the sampled 3x3 grid: 0/90/180/270 to match screen orientation")]
         [SerializeField] private int captureRotation = 90;
         [Tooltip("ARCore CPU image often comes back as BGRA — swap R/B to fix colors")]
-        [SerializeField] private bool swapRedBlue = true;
+        [SerializeField] private bool swapRedBlue = false;
 
         [Header("Component References")]
         [SerializeField] private ColorDetector colorDetector;
@@ -168,7 +168,18 @@ namespace RubiksCube.UI
             char[] faceColors = RotateFacelets(raw, captureRotation);
             cubeState.faces[currentFaceIndex] = faceColors;
 
-            Debug.Log($"[Scan] Face {currentFaceIndex} ({FaceNames[currentFaceIndex]}): {new string(faceColors)} (raw {new string(raw)})");
+            // DIAGNOSTIC: sample the 9 cell centers' real RGB so we can see what
+            // the camera image actually contains (channel order / cast / region).
+            var sb = new System.Text.StringBuilder();
+            for (int gr = 0; gr < 3; gr++)
+                for (int gc = 0; gc < 3; gc++)
+                {
+                    int px = (int)((gc + 0.5f) / 3f * square.width);
+                    int py = (int)((gr + 0.5f) / 3f * square.height);
+                    Color cc = square.GetPixel(px, py);
+                    sb.Append($"[{(int)(cc.r * 255)},{(int)(cc.g * 255)},{(int)(cc.b * 255)}] ");
+                }
+            Debug.Log($"[Scan] Face {currentFaceIndex} ({FaceNames[currentFaceIndex]}): {new string(faceColors)} (raw {new string(raw)})\n  cellRGB: {sb}");
 
             UpdateColorPreview(faceColors);
             Destroy(square);
