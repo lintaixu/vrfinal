@@ -3,31 +3,32 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using UnityEngine.XR.ARFoundation;
 using RubiksCube.Data;
 using RubiksCube.ColorDetection;
 
 namespace RubiksCube.UI
 {
     /// <summary>
-    /// A virtual 3D Rubik's cube shown on the step-guide screen. It is painted
-    /// with the user's actual scanned colors and loop-previews the move for the
-    /// current step, so the user matches by COLOR (not abstract R/U/F notation)
-    /// and just copies whichever layer is spinning. Drag to orbit the view.
+    /// A virtual 3D Rubik's cube anchored in AR world space during the step
+    /// guide. It is painted with the user's actual scanned colors and floats
+    /// fixed in the air, so the user can physically walk around it 360° to see
+    /// every face. For each step the correct layer loop-previews its 90° turn,
+    /// so the user matches by COLOR and just copies the spinning face — no need
+    /// to know which physical face is "R".
     ///
-    /// Rendered by a dedicated camera into a RenderTexture (layer-isolated from
-    /// the AR scene) and displayed via a RawImage on the step panel.
+    /// Rendered by the live AR camera (re-enabled when entering the step guide,
+    /// after scanning released it). Drag on screen also spins it in place.
     /// </summary>
     public class CubeDemo3D : MonoBehaviour
     {
-        private const int DemoLayer = 31;
         private const float Spacing = 1.0f;
-        private static readonly Vector3 RigPos = new Vector3(0f, 1000f, 0f);
+        private const float WorldScale = 0.045f; // ~0.1 m cube
+        private const float PlaceDistance = 0.45f;
 
         private ColorDetector detector;
-        private Camera demoCamera;
-        private Transform cubeRoot;   // orbit container
+        private Transform cubeRoot;   // world-anchored container
         private Transform pivot;      // per-move rotation pivot (child of cubeRoot)
-        private RawImage display;
 
         private readonly Dictionary<Vector3Int, Transform> cubies = new Dictionary<Vector3Int, Transform>();
         private readonly Dictionary<char, Material> materialCache = new Dictionary<char, Material>();
@@ -38,6 +39,11 @@ namespace RubiksCube.UI
 
         private Coroutine previewRoutine;
         private bool built;
+
+        // AR components disabled by scanning that we must turn back on
+        private ARSession arSession;
+        private ARCameraManager arCameraManager;
+        private ARCameraBackground arCameraBackground;
 
         // Per-face outward normals (cube-local). Face order: U R F D L B.
         private static readonly Vector3[] FaceNormal =
@@ -57,50 +63,59 @@ namespace RubiksCube.UI
             if (built) return;
             built = true;
 
-            // Keep the demo cube out of the AR camera's view
-            if (Camera.main != null)
-                Camera.main.cullingMask &= ~(1 << DemoLayer);
-
-            // Rig + orbit container, parked far from the AR scene
-            var rig = new GameObject("CubeDemoRig");
-            rig.transform.position = RigPos;
-            cubeRoot = new GameObject("CubeRoot").transform;
-            cubeRoot.SetParent(rig.transform, false);
+            // World-space container for the cube (not parented to the camera,
+            // so it stays fixed in the room as the user moves around it)
+            cubeRoot = new GameObject("ARCubeRoot").transform;
+            cubeRoot.localScale = Vector3.one * WorldScale;
             pivot = new GameObject("MovePivot").transform;
             pivot.SetParent(cubeRoot, false);
 
-            // Dedicated camera -> RenderTexture
-            var camGO = new GameObject("CubeDemoCamera");
-            camGO.transform.SetParent(rig.transform, false);
-            camGO.transform.localPosition = new Vector3(3.4f, 2.7f, -4.4f);
-            camGO.transform.LookAt(rig.transform.position);
-            demoCamera = camGO.AddComponent<Camera>();
-            demoCamera.cullingMask = 1 << DemoLayer;
-            demoCamera.clearFlags = CameraClearFlags.SolidColor;
-            demoCamera.backgroundColor = new Color(0.05f, 0.05f, 0.08f, 0f);
-            demoCamera.fieldOfView = 38f;
-            demoCamera.nearClipPlane = 0.1f;
-            demoCamera.farClipPlane = 50f;
+            // Let the AR feed show through the step panel
+            var panelImg = GetComponent<Image>();
+            if (panelImg != null)
+            {
+                var c = panelImg.color;
+                panelImg.color = new Color(c.r, c.g, c.b, 0f);
+            }
 
-            var rt = new RenderTexture(640, 640, 16, RenderTextureFormat.ARGB32);
-            rt.Create();
-            demoCamera.targetTexture = rt;
+            // Transparent full-panel drag catcher (behind the buttons) to spin
+            var dragGO = new GameObject("CubeDragCatcher");
+            dragGO.transform.SetParent(uiParent, false);
+            var dragRect = dragGO.AddComponent<RectTransform>();
+            dragRect.anchorMin = Vector2.zero;
+            dragRect.anchorMax = Vector2.one;
+            dragRect.offsetMin = Vector2.zero;
+            dragRect.offsetMax = Vector2.zero;
+            var dragImg = dragGO.AddComponent<Image>();
+            dragImg.color = new Color(0, 0, 0, 0f);
+            dragImg.raycastTarget = true;
+            dragGO.AddComponent<CubeDemoDragger>().target = this;
+            dragGO.transform.SetAsFirstSibling();
 
-            // RawImage on the step panel (upper area)
-            var imgGO = new GameObject("CubeDemoView");
-            imgGO.transform.SetParent(uiParent, false);
-            var rect = imgGO.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0.5f, 0.52f);
-            rect.anchorMax = new Vector2(0.5f, 0.52f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(620, 620);
-            display = imgGO.AddComponent<RawImage>();
-            display.texture = rt;
-            display.raycastTarget = true;
+            // "Recenter" button to re-place the cube in front of the current view
+            var btnGO = new GameObject("RecenterButton");
+            btnGO.transform.SetParent(uiParent, false);
+            var btnRect = btnGO.AddComponent<RectTransform>();
+            btnRect.anchorMin = new Vector2(0.35f, 0.17f);
+            btnRect.anchorMax = new Vector2(0.65f, 0.23f);
+            btnRect.offsetMin = Vector2.zero;
+            btnRect.offsetMax = Vector2.zero;
+            var btnImg = btnGO.AddComponent<Image>();
+            btnImg.color = new Color(0.2f, 0.5f, 0.9f, 0.85f);
+            btnGO.AddComponent<Button>().onClick.AddListener(PlaceInFront);
 
-            var dragger = imgGO.AddComponent<CubeDemoDragger>();
-            dragger.target = this;
+            var btnTextGO = new GameObject("Text");
+            btnTextGO.transform.SetParent(btnGO.transform, false);
+            var btnTextRect = btnTextGO.AddComponent<RectTransform>();
+            btnTextRect.anchorMin = Vector2.zero;
+            btnTextRect.anchorMax = Vector2.one;
+            btnTextRect.offsetMin = Vector2.zero;
+            btnTextRect.offsetMax = Vector2.zero;
+            var btnTMP = btnTextGO.AddComponent<TMPro.TextMeshProUGUI>();
+            btnTMP.text = "Recenter";
+            btnTMP.fontSize = 26;
+            btnTMP.alignment = TMPro.TextAlignmentOptions.Center;
+            btnTMP.color = Color.white;
         }
 
         // ------------------------------------------------------------- public API
@@ -109,6 +124,9 @@ namespace RubiksCube.UI
         {
             detector = colorDetector;
             moves = solution;
+
+            // Scanning disabled the AR camera; turn it back on for the AR view
+            EnableARCamera();
 
             // Map facelet letters (U R F D L B) back to the scanned center colors
             letterToColor = new Dictionary<char, char>
@@ -132,6 +150,8 @@ namespace RubiksCube.UI
                 stateLetters.Add(cc.ToFaceCube().ToFaceletString());
             }
 
+            if (cubeRoot != null) cubeRoot.gameObject.SetActive(true);
+            PlaceInFront();
             ShowStep(0);
         }
 
@@ -148,25 +168,63 @@ namespace RubiksCube.UI
                 previewRoutine = StartCoroutine(PreviewLoop(moves[index]));
         }
 
+        /// <summary>Park the cube floating in the air in front of the camera.</summary>
+        public void PlaceInFront()
+        {
+            if (cubeRoot == null) return;
+            var cam = Camera.main;
+            if (cam == null) return;
+
+            Vector3 fwd = cam.transform.forward;
+            cubeRoot.position = cam.transform.position + fwd * PlaceDistance;
+
+            Vector3 flatForward = new Vector3(fwd.x, 0f, fwd.z);
+            if (flatForward.sqrMagnitude < 0.001f) flatForward = Vector3.forward;
+            cubeRoot.rotation = Quaternion.LookRotation(flatForward.normalized, Vector3.up);
+        }
+
         public void Orbit(Vector2 delta)
         {
             if (cubeRoot == null) return;
-            cubeRoot.Rotate(Vector3.up, -delta.x * 0.4f, Space.World);
-            cubeRoot.Rotate(Vector3.right, delta.y * 0.4f, Space.World);
+            cubeRoot.Rotate(Vector3.up, -delta.x * 0.3f, Space.World);
+            cubeRoot.Rotate(Camera.main != null ? Camera.main.transform.right : Vector3.right,
+                            delta.y * 0.3f, Space.World);
         }
 
-        private void OnDisable() => StopPreview();
+        private void OnEnable()
+        {
+            if (cubeRoot != null) cubeRoot.gameObject.SetActive(true);
+        }
+
+        private void OnDisable()
+        {
+            StopPreview();
+            if (cubeRoot != null) cubeRoot.gameObject.SetActive(false);
+        }
+
+        // ------------------------------------------------------------- AR camera
+
+        private void EnableARCamera()
+        {
+            if (arSession == null) arSession = FindFirstObjectByType<ARSession>();
+            if (arCameraManager == null) arCameraManager = FindFirstObjectByType<ARCameraManager>();
+            if (arCameraBackground == null) arCameraBackground = FindFirstObjectByType<ARCameraBackground>();
+
+            if (arSession != null) arSession.enabled = true;
+            if (arCameraManager != null) arCameraManager.enabled = true;
+            if (arCameraBackground != null) arCameraBackground.enabled = true;
+
+            Debug.Log("[CubeDemo] AR camera re-enabled for world-space step guide");
+        }
 
         // ------------------------------------------------------------- cube build
 
         private void BuildCube(string letters)
         {
-            // Clear previous cubies
             foreach (var kv in cubies)
                 if (kv.Value != null) Destroy(kv.Value.gameObject);
             cubies.Clear();
 
-            // 27 cubie bodies
             for (int x = -1; x <= 1; x++)
                 for (int y = -1; y <= 1; y++)
                     for (int z = -1; z <= 1; z++)
@@ -174,16 +232,14 @@ namespace RubiksCube.UI
                         var coord = new Vector3Int(x, y, z);
                         var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
                         body.name = $"Cubie_{x}_{y}_{z}";
-                        SetLayerRecursive(body, DemoLayer);
                         Destroy(body.GetComponent<Collider>());
                         body.transform.SetParent(cubeRoot, false);
                         body.transform.localPosition = (Vector3)coord * Spacing;
                         body.transform.localScale = Vector3.one * 0.96f;
-                        body.GetComponent<Renderer>().sharedMaterial = GetMaterial('K'); // black body
+                        body.GetComponent<Renderer>().sharedMaterial = GetMaterial('K');
                         cubies[coord] = body.transform;
                     }
 
-            // 54 stickers (children of their cubie so they move with it)
             for (int f = 0; f < 6; f++)
             {
                 for (int idx = 0; idx < 9; idx++)
@@ -196,7 +252,6 @@ namespace RubiksCube.UI
 
                     var sticker = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     sticker.name = $"Sticker_{f}_{idx}";
-                    SetLayerRecursive(sticker, DemoLayer);
                     Destroy(sticker.GetComponent<Collider>());
                     sticker.transform.SetParent(cubies[coord], false);
                     sticker.transform.localPosition = normal * 0.5f;
@@ -293,7 +348,6 @@ namespace RubiksCube.UI
                 StopCoroutine(previewRoutine);
                 previewRoutine = null;
             }
-            // Re-home any cubies still parented to the pivot
             if (pivot != null && cubeRoot != null)
             {
                 var stragglers = new List<Transform>();
@@ -332,7 +386,7 @@ namespace RubiksCube.UI
 
         private Color ColorFor(char colorChar)
         {
-            if (colorChar == 'K') return new Color(0.08f, 0.08f, 0.08f); // cubie body
+            if (colorChar == 'K') return new Color(0.05f, 0.05f, 0.05f); // cubie body
             if (detector != null && colorChar != '?')
                 return detector.GetPreviewColor(colorChar);
 
@@ -348,14 +402,7 @@ namespace RubiksCube.UI
             };
         }
 
-        private static void SetLayerRecursive(GameObject go, int layer)
-        {
-            go.layer = layer;
-            foreach (Transform child in go.transform)
-                SetLayerRecursive(child.gameObject, layer);
-        }
-
-        /// <summary>Drag handler on the RawImage that orbits the cube view.</summary>
+        /// <summary>Drag handler on the panel that spins the cube in place.</summary>
         public class CubeDemoDragger : MonoBehaviour, IDragHandler
         {
             public CubeDemo3D target;
